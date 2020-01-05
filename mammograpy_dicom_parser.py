@@ -1,13 +1,19 @@
 import os
-from pathlib import Path
 import pydicom as dicom
-from tqdm import tqdm_notebook
-from pydicom.errors import InvalidDicomError
+
 import numpy as np
 import sys
-
+import json
 import logging
-logger = logging.getLogger('importer')
+
+from collections import defaultdict
+from tqdm import tqdm
+from pydicom.errors import InvalidDicomError
+from pathlib import Path
+
+
+logger = logging.getLogger('mammo_importer')
+logging.getLogger().setLevel(logging.INFO)
 
 
 def find_dicoms(path):
@@ -59,10 +65,18 @@ def find_mammograms(dicoms):
     failed_to_parse = []
     mammograms = {}
     patient_ids = []
-    for dicom_file in tqdm_notebook(dicoms):
+    for dicom_file in tqdm(dicoms):
         try:
             x = dicom.read_file(dicom_file, stop_before_pixels=True)
             if x.Modality == 'MG':
+                if x.Manufacturer in ['R2 Technology, Inc.']:
+                    logger.warning(f'{dicom_file} is of {x.Manufacturer}. Skipping.')
+                    continue
+
+                if x.Rows < 1500 and x.Columns < 1500:
+                    logger.warning(f'{dicom_file} is too small. Skipping.')
+                    continue
+
                 laterality, view = find_laterality(x)
                 if view == 'SPECIMEN':
                     logger.warning(f'{dicom_file} has view "SPECIMEN". Skipping.')
@@ -74,6 +88,7 @@ def find_mammograms(dicoms):
                     'StudyInstanceUID': x.StudyInstanceUID,
                     'SeriesInstanceUID': x.SeriesInstanceUID,
                     'InstitutionName': x.InstitutionName,
+                    'Manufacturer': x.Manufacturer,
                     'ViewPosition': view if view else 'NA',
                     'Laterality': laterality if laterality else 'NA',
                     'ImageType': x.ImageType
@@ -129,3 +144,94 @@ def make_patient_mapping(patient_ids, encoding='10'):
 
     return mapping
 
+
+def rewrite_structure(mammograms_dict, mapping, new_path='/home/jonas/DCIS/'):
+    """
+    Returns a dictionary of patient ids mapping to studyinstance uids, and a studyinstanceuids map to integers. The patient
+    itself is cached, and when new files are added it is checked against this metadata if these files actually exist
+    """
+
+    studies_per_patient = defaultdict(list)
+    uid_mapping = {}
+    for fn in mammograms_dict:
+        study_instance_uid = mammograms_dict[fn]['StudyInstanceUID']
+        patient_id = mammograms_dict[fn]['PatientID']
+        if study_instance_uid not in studies_per_patient[patient_id]:
+            studies_per_patient[patient_id].append(study_instance_uid)
+
+        metadata_file = Path(new_path) / mapping[patient_id] / f'studies.dat'
+        if not os.path.exists(metadata_file):
+            with open(metadata_file, 'w') as f:
+                f.write('StudyInstanceUIDs\n')
+
+    for patient_id in studies_per_patient:
+        with open(Path(new_path) / mapping[patient_id] / 'studies.dat', 'r') as f:
+            study_instance_uids = [_.strip() for _ in f.readlines()[1:]]
+
+        new_study_instance_uids = list(study_instance_uids)
+        # Add new study instance UIDs to the list if they are not yet there.
+        new_study_instance_uids.extend(x for x in studies_per_patient[patient_id]
+                                       if x not in new_study_instance_uids)
+
+        for idx, study_instance_uid in enumerate(new_study_instance_uids):
+            if not study_instance_uid in study_instance_uids:
+                with open(Path(new_path) / mapping[patient_id] / 'studies.dat', 'a') as f:
+                    f.write(study_instance_uid + '\n')
+            uid_mapping[study_instance_uid] = '{:2d}'.format(idx + 1).replace(' ', '0')
+
+    return dict(studies_per_patient), uid_mapping
+
+
+def create_temporary_file_structure(mammograms, mapping, new_path='/home/jonas/DCIS'):
+    new_mammograms = {}
+
+    output = defaultdict(list)
+
+    for fn in mammograms:
+        patient_id = mammograms[fn]['PatientID']
+        study_instance_uid = mammograms[fn]['StudyInstanceUID']
+        folder_name = Path(mapping[patient_id]) / uid_mapping[study_instance_uid]
+
+        f = new_path / folder_name
+        f.mkdir(exist_ok=True)
+        fn = Path(fn)
+        new_fn = f / Path(fn.name)
+        try:
+            os.symlink(fn, new_fn)
+        except FileExistsError as e:
+            logger.info(f'Symlinking for {fn} already exists.')
+        new_mammograms[str(new_fn)] = mammograms[str(fn)].copy()
+        new_mammograms[str(new_fn)]['Original_PatientID'] = new_mammograms[str(new_fn)]['PatientID']
+        new_mammograms[str(new_fn)]['PatientID'] = mapping[new_mammograms[str(new_fn)]['Original_PatientID']]
+
+        curr_dict = mammograms[str(fn)].copy()
+        patient_id = curr_dict['PatientID']
+        curr_dict['Original_PatientID'] = patient_id
+        curr_dict['filename'] = str(new_fn)
+        curr_dict['PatientID'] = mapping[patient_id]
+
+        output[str(f)].append(curr_dict)
+
+    return dict(output)
+
+
+def main():
+    path = '/data/archives/DCIS/'
+    dicoms = find_dicoms(path)
+    mammograms, patient_ids, failed_to_parse = find_mammograms(dicoms)
+
+    with open('failed_to_parse.log', 'a') as f:
+        for line in failed_to_parse:
+            f.write(line + '\n')
+
+    mapping = make_patient_mapping(patient_ids)
+
+    _, _ = rewrite_structure(mammograms, mapping)
+    new_mammograms = create_temporary_file_structure(mammograms, mapping)
+
+    with open('mammograms_paths.json', 'w') as f:
+        json.dump(new_mammograms, indent=2)
+
+
+if __name__ == '__main__':
+    main()
