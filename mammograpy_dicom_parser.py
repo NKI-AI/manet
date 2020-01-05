@@ -197,8 +197,6 @@ def rewrite_structure(mammograms_dict, mapping, new_path='/home/jonas/DCIS/'):
 
 
 def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path='/home/jonas/DCIS'):
-    new_mammograms = {}
-
     output = defaultdict(list)
 
     for fn in mammograms:
@@ -212,6 +210,11 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         new_fn = f / Path(fn.name)
         try:
             os.symlink(fn, new_fn)
+            # Also copy over labels
+            for nrrd_fn in f.parent.glob('*label*'):
+                logger.info(f'Linking label {nrrd_fn}')
+                os.symlink(nrrd_fn, f / Path(nrrd_fn.name))
+
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')
 
