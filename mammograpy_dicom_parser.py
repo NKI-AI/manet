@@ -16,6 +16,12 @@ logger = logging.getLogger('mammo_importer')
 logging.getLogger().setLevel(logging.INFO)
 
 
+def write_list(x, path):
+    with open(path, 'w') as f:
+        for line in x:
+            f.write(line + '\n')
+
+
 def find_dicoms(path):
     logger.info(f'Looking for all dicom files in {path}. This can take a while...')
     path = os.path.normpath(path)
@@ -65,16 +71,20 @@ def find_mammograms(dicoms):
     failed_to_parse = []
     mammograms = {}
     patient_ids = []
+    bad_manufacturer = []
+    too_small = []
     for dicom_file in tqdm(dicoms):
         try:
             x = dicom.read_file(dicom_file, stop_before_pixels=True)
             if x.Modality == 'MG':
                 if x.Manufacturer in ['R2 Technology, Inc.']:
                     logger.warning(f'{dicom_file} is of {x.Manufacturer}. Skipping.')
+                    bad_manufacturer.append(dicom_file)
                     continue
 
                 if x.Rows < 1500 and x.Columns < 1500:
                     logger.warning(f'{dicom_file} is too small. Skipping.')
+                    too_small.append(dicom_file)
                     continue
 
                 laterality, view = find_laterality(x)
@@ -115,6 +125,9 @@ def find_mammograms(dicoms):
             failed_to_parse.append(dicom_file)
 
     logger.info(f'Found {len(mammograms)} and failed to parse {len(failed_to_parse)} files.')
+    write_list(too_small, 'too_small.log')
+    write_list(bad_manufacturer, 'bad_manufacturer.log')
+
     return mammograms, patient_ids, failed_to_parse
 
 
