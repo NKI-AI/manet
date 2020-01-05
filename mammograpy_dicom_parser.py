@@ -1,6 +1,5 @@
 import os
 import pydicom as dicom
-
 import numpy as np
 import sys
 import json
@@ -101,7 +100,7 @@ def find_mammograms(dicoms):
                     'Manufacturer': x.Manufacturer,
                     'ViewPosition': view if view else 'NA',
                     'Laterality': laterality if laterality else 'NA',
-                    'ImageType': x.ImageType
+                    'ImageType': list(x.ImageType)
                 }
 
             elif x.Modality in ['PR', 'SR', 'US', 'CR']:
@@ -215,9 +214,6 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
             os.symlink(fn, new_fn)
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')
-        new_mammograms[str(new_fn)] = mammograms[str(fn)].copy()
-        new_mammograms[str(new_fn)]['Original_PatientID'] = new_mammograms[str(new_fn)]['PatientID']
-        new_mammograms[str(new_fn)]['PatientID'] = patient_mapping[new_mammograms[str(new_fn)]['Original_PatientID']]
 
         curr_dict = mammograms[str(fn)].copy()
         patient_id = curr_dict['PatientID']
@@ -245,9 +241,10 @@ def main():
     uid_mapping = rewrite_structure(mammograms,patient_mapping)
     new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping)
 
-    with open('mammograms_paths.json', 'w') as f:
-        json.dump(new_mammograms, indent=2)
+    with open('mammograms_imported.json', 'w') as f:
+        json.dump(new_mammograms, f, indent=2)
 
+    write_list(new_mammograms.keys(), 'imported_studies.log')
 
 if __name__ == '__main__':
     main()
