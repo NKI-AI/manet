@@ -172,7 +172,9 @@ def rewrite_structure(mammograms_dict, mapping, new_path='/home/jonas/DCIS/'):
         if study_instance_uid not in studies_per_patient[patient_id]:
             studies_per_patient[patient_id].append(study_instance_uid)
 
-        metadata_file = Path(new_path) / mapping[patient_id] / f'studies.dat'
+        path_to_patient = Path(new_path) / mapping[patient_id]
+        os.makedirs(path_to_patient, exist_ok=True)
+        metadata_file = path_to_patient / f'studies.dat'
         if not os.path.exists(metadata_file):
             with open(metadata_file, 'w') as f:
                 f.write('StudyInstanceUIDs\n')
