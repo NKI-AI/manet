@@ -194,10 +194,10 @@ def rewrite_structure(mammograms_dict, mapping, new_path='/home/jonas/DCIS/'):
                     f.write(study_instance_uid + '\n')
             uid_mapping[study_instance_uid] = '{:2d}'.format(idx + 1).replace(' ', '0')
 
-    return dict(studies_per_patient), uid_mapping
+    return uid_mapping
 
 
-def create_temporary_file_structure(mammograms, mapping, new_path='/home/jonas/DCIS'):
+def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path='/home/jonas/DCIS'):
     new_mammograms = {}
 
     output = defaultdict(list)
@@ -205,7 +205,7 @@ def create_temporary_file_structure(mammograms, mapping, new_path='/home/jonas/D
     for fn in mammograms:
         patient_id = mammograms[fn]['PatientID']
         study_instance_uid = mammograms[fn]['StudyInstanceUID']
-        folder_name = Path(mapping[patient_id]) / uid_mapping[study_instance_uid]
+        folder_name = Path(patient_mapping[patient_id]) / uid_mapping[study_instance_uid]
 
         f = new_path / folder_name
         f.mkdir(exist_ok=True)
@@ -217,13 +217,14 @@ def create_temporary_file_structure(mammograms, mapping, new_path='/home/jonas/D
             logger.info(f'Symlinking for {fn} already exists.')
         new_mammograms[str(new_fn)] = mammograms[str(fn)].copy()
         new_mammograms[str(new_fn)]['Original_PatientID'] = new_mammograms[str(new_fn)]['PatientID']
-        new_mammograms[str(new_fn)]['PatientID'] = mapping[new_mammograms[str(new_fn)]['Original_PatientID']]
+        new_mammograms[str(new_fn)]['PatientID'] = patient_mapping[new_mammograms[str(new_fn)]['Original_PatientID']]
 
         curr_dict = mammograms[str(fn)].copy()
         patient_id = curr_dict['PatientID']
         curr_dict['Original_PatientID'] = patient_id
         curr_dict['filename'] = str(new_fn)
-        curr_dict['PatientID'] = mapping[patient_id]
+        curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
+        curr_dict['PatientID'] = patient_mapping[patient_id]
 
         output[str(f)].append(curr_dict)
 
@@ -239,10 +240,10 @@ def main():
         for line in failed_to_parse:
             f.write(line + '\n')
 
-    mapping = make_patient_mapping(patient_ids)
+    patient_mapping = make_patient_mapping(patient_ids)
 
-    _, _ = rewrite_structure(mammograms, mapping)
-    new_mammograms = create_temporary_file_structure(mammograms, mapping)
+    uid_mapping = rewrite_structure(mammograms,patient_mapping)
+    new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping)
 
     with open('mammograms_paths.json', 'w') as f:
         json.dump(new_mammograms, indent=2)
