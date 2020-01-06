@@ -213,7 +213,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         try:
             os.symlink(fn, new_fn)
             # Also copy over labels
-            for nrrd_fn in f.parent.glob('*label*'):
+            for nrrd_fn in fn.parent.glob('*label*'):
                 logger.info(f'Linking label {nrrd_fn}')
                 os.symlink(nrrd_fn, f / Path(nrrd_fn.name))
                 labels_found.append(str(f / Path(nrrd_fn.name)))
