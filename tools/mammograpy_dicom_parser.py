@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import json
 import logging
+import argparse
 
 from collections import defaultdict
 from tqdm import tqdm
@@ -157,7 +158,7 @@ def make_patient_mapping(patient_ids, encoding='10'):
     return mapping
 
 
-def rewrite_structure(mammograms_dict, mapping, new_path='/home/jonas/DCIS/'):
+def rewrite_structure(mammograms_dict, mapping, new_path):
     """
     Returns a dictionary of patient ids mapping to studyinstance uids, and a studyinstanceuids map to integers. The patient
     itself is cached, and when new files are added it is checked against this metadata if these files actually exist
@@ -198,6 +199,7 @@ def rewrite_structure(mammograms_dict, mapping, new_path='/home/jonas/DCIS/'):
 
 def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path='/home/jonas/DCIS'):
     output = defaultdict(list)
+    labels_found = []
 
     for fn in mammograms:
         patient_id = mammograms[fn]['PatientID']
@@ -214,6 +216,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
             for nrrd_fn in f.parent.glob('*label*'):
                 logger.info(f'Linking label {nrrd_fn}')
                 os.symlink(nrrd_fn, f / Path(nrrd_fn.name))
+                labels_found.append(str(f / Path(nrrd_fn.name)))
 
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')
@@ -227,12 +230,19 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
         output[str(f)].append(curr_dict)
 
+    write_list(labels_found, 'labels.log')
+
     return dict(output)
 
 
 def main():
-    path = '/data/archives/DCIS/'
-    dicoms = find_dicoms(path)
+    parser = argparse.ArgumentParser(description='Process dataset into convenient format.')
+    parser.add_argument('--path', type=Path, default='/data/archives/DCIS/', help='Path to dataset')
+    parser.add_argument('--dest', type=Path, default='/home/jonas/DCIS/',
+                        help='Destination directory')
+    args = parser.parse_args()
+
+    dicoms = find_dicoms(args.path)
     mammograms, patient_ids, failed_to_parse = find_mammograms(dicoms)
 
     with open('failed_to_parse.log', 'a') as f:
@@ -241,13 +251,14 @@ def main():
 
     patient_mapping = make_patient_mapping(patient_ids)
 
-    uid_mapping = rewrite_structure(mammograms,patient_mapping)
+    uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
     new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping)
 
     with open('mammograms_imported.json', 'w') as f:
         json.dump(new_mammograms, f, indent=2)
 
     write_list(new_mammograms.keys(), 'imported_studies.log')
+
 
 if __name__ == '__main__':
     main()
