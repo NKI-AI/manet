@@ -230,6 +230,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         patient_id = curr_dict['PatientID']
         curr_dict['Original_PatientID'] = patient_id
         curr_dict['filename'] = str(new_fn)
+        curr_dict['label'] = labels_found[-1]
         curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
         curr_dict['PatientID'] = patient_mapping[patient_id]
 
