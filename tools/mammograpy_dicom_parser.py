@@ -197,7 +197,7 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
     return uid_mapping
 
 
-def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path='/home/jonas/DCIS'):
+def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path):
     output = defaultdict(list)
     labels_found = []
 
@@ -252,7 +252,7 @@ def main():
     patient_mapping = make_patient_mapping(patient_ids)
 
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
-    new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping)
+    new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, args.dest)
 
     with open('mammograms_imported.json', 'w') as f:
         json.dump(new_mammograms, f, indent=2)
