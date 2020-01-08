@@ -214,11 +214,12 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         try:
             os.symlink(fn, new_fn)
             # Also copy over labels
-            label_path = Path(str(new_fn).replace('.dcm', '-label.nrrd'))
+            label_path = Path(str(fn).replace('.dcm', '-label.nrrd'))
+            # TODO: Find labels with other name and log this
             if label_path.exists():
-                    logger.info(f'Linking label {label_path}')
-                    os.symlink(label_path, f / Path(label_path.name))
-                    labels_found.append(str(f / Path(label_path.name)))
+                logger.info(f'Linking label {label_path}')
+                os.symlink(label_path, f / Path(label_path.name))
+                labels_found.append(str(f / Path(label_path.name)))
 
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')
@@ -230,7 +231,8 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         patient_id = curr_dict['PatientID']
         curr_dict['Original_PatientID'] = patient_id
         curr_dict['filename'] = str(new_fn)
-        curr_dict['label'] = labels_found[-1]
+        if labels_found:
+            curr_dict['label'] = labels_found[-1]
         curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
         curr_dict['PatientID'] = patient_mapping[patient_id]
 
