@@ -219,7 +219,11 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
             if label_path.exists():
                 logger.info(f'Linking label {label_path}')
                 os.symlink(label_path, f / Path(label_path.name))
-                labels_found.append(str(f / Path(label_path.name)))
+                label = str(f / Path(label_path.name))
+                labels_found.append(label)
+
+            else:
+                label = None
 
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')
@@ -231,8 +235,8 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         patient_id = curr_dict['PatientID']
         curr_dict['Original_PatientID'] = patient_id
         curr_dict['filename'] = str(new_fn)
-        if labels_found:
-            curr_dict['label'] = labels_found[-1]
+        if label:
+            curr_dict['label'] = label
         curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
         curr_dict['PatientID'] = patient_mapping[patient_id]
 
