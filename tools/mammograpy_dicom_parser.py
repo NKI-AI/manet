@@ -75,7 +75,14 @@ def find_mammograms(dicoms):
     patient_ids = []
     bad_manufacturer = []
     too_small = []
+    seen = []
     for dicom_file in tqdm(dicoms):
+        if dicom_file in seen:
+            logger.warning(f'{dicom_file} already seen.')
+            sys.exit(0)
+        else:
+            seen.append(dicom_file)
+
         try:
             x = dicom.read_file(dicom_file, stop_before_pixels=True)
             if x.Modality == 'MG':
@@ -107,7 +114,7 @@ def find_mammograms(dicoms):
                 }
 
             elif x.Modality in ['PR', 'SR', 'US', 'CR']:
-                logger.info(f'{dicom_file} is not a mammogram, has modality {x.Modality}')
+                logger.info(f'{dicom_file} is not a mammogram, has modality {x.Modality}.')
             elif x.Modality == 'OT':
                 logger.info(f'{dicom_file} has modality "OT" (other). Trying to parse if this is a mammogram.')
                 # Check if empty
