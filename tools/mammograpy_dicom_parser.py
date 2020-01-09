@@ -210,7 +210,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         f.mkdir(exist_ok=True)
         fn = Path(fn)
         new_fn = f / Path(fn.name)
-
+        label = None
         try:
             os.symlink(fn, new_fn)
             # Also copy over labels
@@ -221,9 +221,6 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
                 os.symlink(label_path, f / Path(label_path.name))
                 label = str(f / Path(label_path.name))
                 labels_found.append(label)
-
-            else:
-                label = None
 
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')

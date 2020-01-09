@@ -54,8 +54,8 @@ def read_list(filename):
 
 
 def dump_json(filename, obj, indent=2):
-    with open(filename, 'w') as outfile:
-        json.dump(obj, outfile, indent)
+    with open(filename, 'w') as f:
+        json.dump(obj, f, indent=indent)
 
 
 def read_json(filename):

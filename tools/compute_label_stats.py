@@ -10,8 +10,8 @@ import numpy as np
 
 from manet.utils.readers import read_image
 from manet.utils.bbox import bounding_box
-from manet.sys.io import read_json, write_json
-
+from manet.sys.io import read_json, dump_json
+from tqdm import tqdm
 
 def parse_json(path):
     mammography_data = read_json(path)
@@ -25,7 +25,7 @@ def parse_json(path):
 
 def get_stats(label_paths):
     stats = {}
-    for label_fn in label_paths:
+    for label_fn in tqdm(label_paths):
         mask, metadata = read_image(label_fn, force_2d=True)
         volume = mask.sum() * np.prod(np.array(metadata['spacing']))
         bbox = bounding_box(volume)
@@ -38,4 +38,4 @@ def get_stats(label_paths):
 if __name__ == '__main__':
     label_paths = parse_json('mammograms_imported.json')
     stats = get_stats(label_paths)
-    write_json(stats, 'label_stats.json')
+    dump_json('label_stats.json', stats)
