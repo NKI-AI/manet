@@ -11,6 +11,8 @@ from tqdm import tqdm
 from pydicom.errors import InvalidDicomError
 from pathlib import Path
 
+from manet.sys.io import dump_json
+
 
 logger = logging.getLogger('mammo_importer')
 logging.getLogger().setLevel(logging.INFO)
@@ -258,6 +260,8 @@ def main():
     dicoms = find_dicoms(args.path)
     mammograms, patient_ids, failed_to_parse = find_mammograms(dicoms)
 
+    dump_json('mammograms_parsed.json', mammograms)
+
     with open('failed_to_parse.log', 'a') as f:
         for line in failed_to_parse:
             f.write(line + '\n')
@@ -267,8 +271,7 @@ def main():
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
     new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, args.dest)
 
-    with open('mammograms_imported.json', 'w') as f:
-        json.dump(new_mammograms, f, indent=2)
+    dump_json('mammograms_imported.json', new_mammograms)
 
     write_list(new_mammograms.keys(), 'imported_studies.log')
 
