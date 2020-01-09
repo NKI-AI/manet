@@ -17,8 +17,9 @@ def parse_json(path):
     mammography_data = read_json(path)
     label_paths = []
     for study in mammography_data.values():
-        if 'label' in study:
-            label_paths.append(study['label'])
+        for case in study:
+            if 'label' in case:
+                label_paths.append(case['label'])
 
     return label_paths
 
@@ -26,10 +27,14 @@ def parse_json(path):
 def get_stats(label_paths):
     stats = {}
     for label_fn in tqdm(label_paths):
-        mask, metadata = read_image(label_fn, force_2d=True)
-        volume = mask.sum() * np.prod(np.array(metadata['spacing']))
-        bbox = bounding_box(volume)
+        try:
+            mask, metadata = read_image(label_fn, force_2d=True)
+        except ValueError as e:
+            print(f'{label_fn} failed: {e}.')
+            continue
 
+        volume = mask.sum() * np.prod(np.array(metadata['spacing']))
+        bbox = bounding_box(mask)
         stats[label_fn] = {'volume': volume, 'height': bbox[-2], 'width': bbox[-1]}
 
     return stats
