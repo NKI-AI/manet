@@ -77,12 +77,6 @@ def find_mammograms(dicoms):
     too_small = []
     seen = []
     for dicom_file in tqdm(dicoms):
-        if dicom_file in seen:
-            logger.warning(f'{dicom_file} already seen.')
-            sys.exit(0)
-        else:
-            seen.append(dicom_file)
-
         try:
             x = dicom.read_file(dicom_file, stop_before_pixels=True)
             if x.Modality == 'MG':
@@ -106,6 +100,7 @@ def find_mammograms(dicoms):
                     'PatientID': x.PatientID,
                     'StudyInstanceUID': x.StudyInstanceUID,
                     'SeriesInstanceUID': x.SeriesInstanceUID,
+                    'SeriesDescription': x.SeriesDescription,
                     'InstitutionName': x.InstitutionName,
                     'Manufacturer': x.Manufacturer,
                     'ViewPosition': view if view else 'NA',
@@ -267,8 +262,6 @@ def main():
     dicoms = find_dicoms(args.path)
     mammograms, patient_ids, failed_to_parse = find_mammograms(dicoms)
 
-    dump_json('mammograms_parsed.json', mammograms)
-
     with open('failed_to_parse.log', 'a') as f:
         for line in failed_to_parse:
             f.write(line + '\n')
@@ -276,6 +269,9 @@ def main():
     patient_mapping = make_patient_mapping(patient_ids)
 
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
+
+    dump_json('uid_mapping.json', uid_mapping)
+
     new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, args.dest)
 
     dump_json('mammograms_imported.json', new_mammograms)
