@@ -269,13 +269,9 @@ def main():
     patient_mapping = make_patient_mapping(patient_ids)
 
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
-
-    dump_json('uid_mapping.json', uid_mapping)
-
     new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, args.dest)
 
     dump_json('mammograms_imported.json', new_mammograms)
-
     write_list(new_mammograms.keys(), 'imported_studies.log')
 
 
