@@ -8,7 +8,25 @@ LICENSE file in the root directory of this source tree.
 import numpy as np
 
 
-def _split_bbox(bbox):
+# TODO: This class can be extended so boxes can be added and subtracted.
+class BoundingBox(object):
+    def __init__(self, bbox):
+        self.bbox = np.asarray(bbox)
+        self.coordinates, self.size = split_bbox(bbox)
+
+    @property
+    def center(self):
+        return self.coordinates - self.size // 2
+
+    def bounding_box_around_center(self, output_size):
+        output_size = np.asarray(output_size)
+        return BoundingBox(combine_bbox(self.center - output_size // 2, output_size))
+
+    def __add__(self, x):
+        pass
+
+
+def split_bbox(bbox):
     """Split bbox into coordinates and size
 
     Parameters
@@ -27,7 +45,7 @@ def _split_bbox(bbox):
     return bbox_coords, bbox_size
 
 
-def _combine_bbox(bbox_coords, bbox_size):
+def combine_bbox(bbox_coords, bbox_size):
     """Combine coordinates and size into a bounding box.
 
     Parameters
@@ -64,11 +82,11 @@ def extend_bbox(bbox, extend, retrieve_original=False):
     if not np.any(extend):
         return bbox
 
-    bbox_coords, bbox_size = _split_bbox(bbox)
+    bbox_coords, bbox_size = split_bbox(bbox)
     extend = np.asarray(extend)
-    newbbox = _combine_bbox(bbox_coords - extend // 2, bbox_size + extend)
+    newbbox = combine_bbox(bbox_coords - extend // 2, bbox_size + extend)
     if retrieve_original:
-        return newbbox, _combine_bbox(extend // 2, bbox_size)
+        return newbbox, combine_bbox(extend // 2, bbox_size)
     else:
         return newbbox
 
@@ -89,7 +107,7 @@ def convert_bbox(bbox, to='xyXY'):
         raise NotImplementedError()
 
     if to == 'xyXY':
-        bbox_coords, bbox_size = _split_bbox(bbox)
+        bbox_coords, bbox_size = split_bbox(bbox)
         bbox_coords2 = np.asarray(bbox_coords) + np.asarray(bbox_size)
 
         bbox = np.concatenate([bbox_coords, bbox_coords2]).tolist()
@@ -134,7 +152,7 @@ def get_random_shift_bbox(bbox, minoverlap=0.3, exclude=[]):
     -------
     bbox: tuple
     """
-    bbox_coords, bbox_size = _split_bbox(bbox)
+    bbox_coords, bbox_size = split_bbox(bbox)
     deltas = [np.floor(val*minoverlap).astype(int) for val in bbox_size]
     out_coords = []
     for i, coord, delta, sz in zip(range(len(bbox_coords)), bbox_coords, deltas, bbox_size):
@@ -149,20 +167,20 @@ def get_random_shift_bbox(bbox, minoverlap=0.3, exclude=[]):
 def add_dim(bbox, dim_sz, pre=True, coord=0):
     """Add extra dimension to bbox of size dim_sz
     """
-    bbox_coords, bbox_size = _split_bbox(bbox)
+    bbox_coords, bbox_size = split_bbox(bbox)
     if pre:
         bbox_coords = [coord] + bbox_coords.tolist()
         bbox_size = [dim_sz] + bbox_size.tolist()
     else:
         bbox_coords = bbox_coords.tolist() + [coord]
         bbox_size =  bbox_size.tolist() + [dim_sz]
-    return _combine_bbox(bbox_coords, bbox_size)
+    return combine_bbox(bbox_coords, bbox_size)
 
 
 def project_bbox(bbox, exclude=[]):
     """Project bbox by excluding dimensions in exclude
     """
-    bbox_coords, bbox_size = _split_bbox(bbox)
+    bbox_coords, bbox_size = split_bbox(bbox)
     out_coords = []
     out_size = []
     for x, d, i in zip(bbox_coords, bbox_size, range(len(bbox_coords))):
@@ -186,7 +204,7 @@ def expand_to_multiple(bbox, div=16, exclude=[]):
     -------
     bounding box
     """
-    bbox_coords, bbox_size = _split_bbox(bbox)
+    bbox_coords, bbox_size = split_bbox(bbox)
     extend = [int(idx not in exclude)*(div - (val % div)) for idx, val in enumerate(bbox_size)]
     return extend_bbox(bbox, extend)
 
@@ -212,7 +230,7 @@ def bounding_box(mask):
         bbox_coords.append(min_val)
         bbox_sizes.append(max_val - min_val + 1)
 
-    return _combine_bbox(bbox_coords, bbox_sizes)
+    return combine_bbox(bbox_coords, bbox_sizes)
 
 
 def crop_to_bbox(image, bbox, pad_value=0):
@@ -222,7 +240,7 @@ def crop_to_bbox(image, bbox, pad_value=0):
     ----------
     image : ndarray
        nD array
-    bbox : list or tuple
+    bbox : list or tuple or BoundingBox
        bbox of the form (coordinates, size),
        for instance (4, 4, 2, 1) is a patch starting at row 4, col 4 with height 2 and width 1.
     pad_value : number
@@ -232,8 +250,10 @@ def crop_to_bbox(image, bbox, pad_value=0):
     -------
     ndarray
     """
+    if not isinstance(bbox, BoundingBox):
+        bbox = BoundingBox(bbox)
     # Coordinates, size
-    bbox_coords, bbox_size = _split_bbox(bbox)
+    bbox_coords, bbox_size = bbox.coordinates, bbox.size
 
     # Offsets
     l_offset = -bbox_coords.copy()

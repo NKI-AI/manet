@@ -85,6 +85,9 @@ def find_mammograms(dicoms):
                     bad_manufacturer.append(dicom_file)
                     continue
 
+                # Might consider removing the following as well:
+                # (0008,2111) ST [Enhanced image created by Carestream Client] #  44, 1 DerivationDescription
+
                 if x.Rows < 1500 and x.Columns < 1500:
                     logger.warning(f'{dicom_file} is too small. Skipping.')
                     too_small.append(dicom_file)

@@ -106,7 +106,7 @@ def resample_sitk_image(sitk_image, spacing=None, interpolator=None,
     return resampled_sitk_image, orig_spacing
 
 
-def read_image(filename, force_2d=False, dtype=None, no_meta=False, **kwargs):
+def read_image(filename, force_2d=False, dtype=None, no_metadata=False, **kwargs):
     """Read medical image
 
     Parameters
@@ -118,7 +118,7 @@ def read_image(filename, force_2d=False, dtype=None, no_meta=False, **kwargs):
         this option reduces the image to 2D.
     dtype : dtype
         The requested dtype the output should be cast.
-    no_meta : bool
+    no_metadata : bool
         Do not output metadata
 
     Returns
