@@ -17,13 +17,11 @@ import numpy as np
 import logging
 import time
 import torch
-import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from apex import amp
 import apex
 import SimpleITK as sitk
-#from apex.parallel import DistributedDataParallel
 from manet.nn.common.tensor_ops import reduce_tensor_dict
 from manet.nn.training.optim import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
