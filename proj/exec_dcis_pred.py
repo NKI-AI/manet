@@ -28,13 +28,12 @@ from manet.nn.common.tensor_ops import reduce_tensor_dict
 from manet.nn.training.optim import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
 from manet.nn.common.model_utils import load_model, save_model
-from manet.nn.unet.resblockunet import ResBlockUNet
-from manet.data.priors_data import PriorSet
+from manet.data.mammo_data import MammoDataset
+from manet.nn.unet.unet2d import UNet
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
-from manet.sys.io import link_data
+from manet.sys.io import link_data, read_list, read_json
 from manet.sys import multi_gpu
-from manet.utils.bbox import crop_to_bbox
 
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
@@ -106,7 +105,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(args, epoch, model, data_loader, writer, exp_path, write_volumes=True, return_losses=False):
+def evaluate(args, epoch, model, data_loader, writer, write_volumes=True, return_losses=False):
     model.eval()
 
     losses = []
@@ -125,7 +124,6 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, write_volumes=Tr
             src_bbox = batch['src_bbox'].cpu().numpy()
             src_volume = batch['src_volume']
             slice_idx = batch['slice_idx'].cpu().numpy()
-            patch_idx = batch['patch_idx'].cpu().numpy()
             output = torch.squeeze(model(image), dim=1)
 
             batch_loss = loss_fn(output, mask)
@@ -136,7 +134,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, write_volumes=Tr
                 for i in range(output_np.shape[0]):
                     crops = src_bbox[i, ...]
                     out_crop = output_np[i, 0, crops[2]:-crops[3], crops[4]:-crops[5]]
-                    #crop_to_bbox(output_np[i, ...], src_bbox[i, ...])
+
                     if src_volume[i] not in out_volumes:
                         out_volumes[src_volume[i]] = []
                         out_meta[src_volume[i]] = {metakey: batch[metakey][i, ...] for metakey in
@@ -176,25 +174,41 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, write_volumes=Tr
 
 
 def build_model(device):
-    model = ResBlockUNet(1, cfg.UNET.NUM_CLS, cfg.UNET.OUTPUT_SHAPE, down_blocks=cfg.UNET.DOWN_BLOCKS,
-                         up_blocks=cfg.UNET.UP_BLOCKS, bottleneck_channels=cfg.UNET.BOTTLENECK_CH).to(device)
+    model = UNet(
+        1, 2, valid=cfg.UNET.VALID_MODE, mode=cfg.UNET.MODE,
+        depth=cfg.UNET.DEPTH, dropout_depth=cfg.UNET.DROPOUT_DEPTH,
+        dropout_prob=cfg.UNET.DROPOUT_PROB, channels_base=cfg.UNET.CHANNELS_BASE,
+        domain_classifier=cfg.UNET.USE_CLASSIFIER, forward_domain_cls=cfg.UNET.FEED_CLS,
+        bn_conv_order=cfg.UNET.BN_ORDER).to(device)
     return model
 
 
-def init_train_data(args, cfg, exp_path, data_source, use_weights=True):
+def init_train_data(args, cfg, data_source, use_weights=True):
+    # Assume the description file, a training set and a validation set are linked in the main directory.
+    train_list = read_list(data_source / 'training_set.txt')
+    validation_list = read_list(data_source / 'validation_set.txt')
+
+    mammography_description = read_json(data_source / 'dataset_description.json')
+
+    training_description = {k: v for k, v in mammography_description.items() if k in train_list}
+    validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
+
     # Build datasets
-    train_set = PriorSet('train', data_source, debug=cfg.DEBUG)
-    val_set = PriorSet('val', data_source, debug=cfg.DEBUG)
-    logger.info(f'Train data: {len(train_set)} Eval data: {len(val_set)}')
+    train_transforms = None
+
+    train_set = MammoDataset(training_description, transform=train_transforms)
+    validation_set = MammoDataset(validation_description)
+    logger.info(f'Train dataset size: {len(train_set)} Validation data size: {len(validation_set)}')
 
     # Build samplers
-    is_distr = (cfg.MULTIGPU == 2)
+    # TODO: Build a custom sampler which can have this included.
+    is_distributed = cfg.MULTIGPU == 2
     if use_weights:
-        train_sampler = build_sampler(train_set, 'weighted_random', weights=train_set.base_weights,
-                                      is_distributed=is_distr)
+        train_sampler = build_sampler(
+            train_set, 'weighted_random', weights=train_set.base_weights, is_distributed=is_distributed)
     else:
-        train_sampler = build_sampler(train_set, 'random', weights=False, is_distributed=is_distr)
-    eval_sampler = build_sampler(val_set, 'sequential', weights=False, is_distributed=is_distr)
+        train_sampler = build_sampler(train_set, 'random', weights=False, is_distributed=is_distributed)
+    validation_sampler = build_sampler(validation_set, 'sequential', weights=False, is_distributed=is_distributed)
 
     train_loader = DataLoader(
         dataset=train_set,
@@ -204,13 +218,13 @@ def init_train_data(args, cfg, exp_path, data_source, use_weights=True):
         pin_memory=True,
     )
     eval_loader = DataLoader(
-        dataset=val_set,
+        dataset=validation_set,
         batch_size=cfg.BATCH_SZ,
-        sampler=eval_sampler,
+        sampler=validation_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    return train_loader, train_sampler, train_set, eval_loader, eval_sampler
+    return train_loader, train_sampler, train_set, eval_loader, validation_sampler
 
 
 def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
@@ -264,7 +278,7 @@ def main(args):
     logger.info('Linking data')
     if args.local_rank == 0:
         if args.no_rsync:
-            logger.info('Assuming data is in {}'.format(cfg.DATA_SOURCE))
+            logger.info(f'Assuming data is in {cfg.DATA_SOURCE}')
         else:
             link_data(cfg.DATA_SOURCE, cfg.INPUT_DIR)
     data_source = cfg.DATA_SOURCE if args.no_rsync else cfg.INPUT_DIR
@@ -275,7 +289,7 @@ def main(args):
         torch.distributed.init_process_group(
             backend='nccl', init_method='env://'
         )
-        logger.info('Synchronizing GPU {}.'.format(args.local_rank))
+        logger.info(f'Synchronizing GPU {args.local_rank}.')
         multi_gpu.synchronize()
 
     logger.info('Building model.')
@@ -296,7 +310,7 @@ def main(args):
 
     # Create dataset and initializer LR scheduler
     logger.info('Creating datasets')
-    train_loader, train_sampler, train_set, eval_loader, eval_sampler = init_train_data(args, cfg, exp_path, data_source)
+    train_loader, train_sampler, train_set, eval_loader, eval_sampler = init_train_data(args, cfg, data_source)
     solver_steps = [_ * len(train_loader) for _ in
                     range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
     lr_scheduler = WarmupMultiStepLR(optimizer, solver_steps, cfg.LR_GAMMA, warmup_factor=1 / 10.,

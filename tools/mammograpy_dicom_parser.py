@@ -75,7 +75,6 @@ def find_mammograms(dicoms):
     patient_ids = []
     bad_manufacturer = []
     too_small = []
-    seen = []
     for dicom_file in tqdm(dicoms):
         try:
             x = dicom.read_file(dicom_file, stop_before_pixels=True)

@@ -23,7 +23,16 @@ class BoundingBox(object):
         return BoundingBox(combine_bbox(self.center - output_size // 2, output_size))
 
     def __add__(self, x):
-        pass
+        self.coordinates_2, self.size_2 = x.coordinates, x.size
+        new_coordinates = np.stack([self.coordinates, self.coordinates_2]).min(axis=0)
+        new_size = np.stack([self.size, self.size_2]).max(axis=0)
+        return BoundingBox(combine_bbox(new_coordinates, new_size))
+
+    def __len__(self, x):
+        return len(self.bbox) // 2
+
+    def __getitem__(self, idx):
+        return self.bbox[idx]
 
 
 def split_bbox(bbox):
