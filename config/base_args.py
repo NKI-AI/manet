@@ -22,8 +22,6 @@ class Args(argparse.ArgumentParser):
 
         super().__init__(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         self.add_argument('--debug', action='store_true', help='If set debug output will be shown')
-        self.add_argument('--suppress-warnings', action='store_true',
-                          help='If set warnings about large values will not be shown.')
         self.add_argument('--local_rank', dest='local_rank', help='Which is the local GPU. Set by init script.',
                             type=int, default=0)
         self.add_argument('--device', type=str, default='cuda',

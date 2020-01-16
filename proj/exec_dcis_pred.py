@@ -103,7 +103,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(args, epoch, model, data_loader, writer, write_volumes=True, return_losses=False):
+def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
     model.eval()
 
     losses = []
@@ -127,33 +127,11 @@ def evaluate(args, epoch, model, data_loader, writer, write_volumes=True, return
             batch_loss = loss_fn(output, mask)
             batch_dice = dice_fn(output, mask)
 
-            if write_volumes:
-                output_np = np.where(output.detach().cpu().numpy() > 0.5, 1.0, 0.0).astype(np.uint8)
-                for i in range(output_np.shape[0]):
-                    crops = src_bbox[i, ...]
-                    out_crop = output_np[i, 0, crops[2]:-crops[3], crops[4]:-crops[5]]
-
-                    if src_volume[i] not in out_volumes:
-                        out_volumes[src_volume[i]] = []
-                        out_meta[src_volume[i]] = {metakey: batch[metakey][i, ...] for metakey in
-                                                   ['src_origin', 'src_direction', 'src_spacing']}
-                    out_volumes[src_volume[i]].append((slice_idx[i], out_crop))
             for loss in batch_loss:
                 losses.append(loss.item())
             for dice in batch_dice:
                 dices.append(dice.item())
             del output
-
-    if write_volumes:
-        for vkey in out_volumes:
-            sorted_patches = [v[1] for v in sorted(out_volumes[vkey], key=(lambda x: x[0]))]
-            out_seg = np.stack(sorted_patches)
-            out_sitk = sitk.GetImageFromArray(out_seg)
-            out_sitk.SetOrigin(out_meta[vkey]['src_origin'].numpy())
-            out_sitk.SetDirection(out_meta[vkey]['src_direction'].numpy())
-            out_sitk.SetSpacing(out_meta[vkey]['src_spacing'].numpy())
-            sitk.WriteImage(sitk.Cast(out_sitk, sitk.sitkUInt8), os.path.join(cfg.EXP_DIR, args.name,
-                                                                              'segmentations', vkey))
 
     metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
                    'DevDice': torch.tensor(np.mean(dices)).to(args.device)}
@@ -199,7 +177,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     logger.info(f'Train dataset size: {len(train_set)} Validation data size: {len(validation_set)}')
 
     # Build samplers
-    # TODO: Build a custom sampler which can have this included.
+    # TODO: Build a custom sampler which can be set differently.
     is_distributed = cfg.MULTIGPU == 2
     if use_weights:
         train_sampler = build_sampler(
@@ -235,8 +213,7 @@ def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    dev_loss, dev_dice, dev_time, losses = evaluate(args, epoch, model, eval_loader, writer, exp_path,
-                                                    write_volumes=False, return_losses=True)
+    dev_loss, dev_dice, dev_time, losses = evaluate(args, epoch, model, eval_loader, writer, exp_path, return_losses=True)
     new_weights = dataset.get_weights(losses)
     train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distr)
     if cfg.MULTIGPU == 2:
