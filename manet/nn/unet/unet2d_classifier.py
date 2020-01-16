@@ -16,11 +16,6 @@ import torch.nn.functional as F
 import logging
 
 logger = logging.getLogger(__name__)
-from networks.unet.core.config_MCs import cfg
-
-
-# from encoding.nn import BatchNorm2d as MultiGpuBatchNorm2d
-# from torch.nn import BatchNorm2d as MultiGpuBatchNorm2d
 
 
 class GradMul(torch.autograd.Function):
@@ -95,7 +90,7 @@ class UNet(nn.Module):
     def __init__(self, num_channels, num_classes, valid=True,
                  mode='nearest', depth=4, dropout_depth=2, dropout_prob=0.5, channels_base=64,
                  bn_conv_order='brcbrc', domain_classifier=False, forward_domain_cls=False, num_domains=1,
-                 multi_gpu=False):
+                 valid_mode=False, gradient_multiplication_scale=False):
         """2D U-Net model implementation 4 x down and upscale
 
         Parameters
@@ -124,7 +119,11 @@ class UNet(nn.Module):
         self.downs = nn.ModuleList()
         self.ups = nn.ModuleList()
         self.clsf = None
-        classifier_channels = 0
+
+        self.gradient_multiplication_scale = gradient_multiplication_scale
+
+        self.valid_mode = valid_mode
+
         for idx in range(self.depth):
             dropout = dropout_prob if idx > self.depth - dropout_depth - 1 else False
             downer = Down(channels_base * 2 ** idx, channels_base * 2 ** (idx + 1), valid, dropout=dropout,
@@ -145,13 +144,9 @@ class UNet(nn.Module):
             self.outc_softmax = torch.nn.Softmax(dim=1)
 
         if self.use_classifier:
-            if cfg.UNET.GRAD_MUL:
-
                 self.clsf = Classifier(channels_base * 2 ** depth, num_domains=self.num_domains,
-                                       grad_scale=cfg.UNET.GRAD_MUL_SCALE)
-            else:
-                self.clsf = Classifier(channels_base * 2 ** depth, num_domains=self.num_domains, grad_scale=1)
-
+                                       grad_scale=1.0 if not self.gradient_multiplication_scale else
+                                       self.gradient_multiplication_scale)
         self.multi_gpu = multi_gpu
         self.init_weights()
 
@@ -202,52 +197,55 @@ def number_groups(x):
 
 
 class Double_conv_old(nn.Module):
-    def __init__(self, in_ch, out_ch, valid=True, bn_conv_order='brcbrc', strd=1):
+    def __init__(self, in_ch, out_ch, valid=True, bn_conv_order='brcbrc', stride=1, norm='batch_norm'):
         super(Double_conv, self).__init__()
 
+        use_batch_norm = norm == 'batch_norm'
+        group_norm_num_groups = int(norm.split('_')[-1]) if norm.beginswith('group_norm') else None
+
         if bn_conv_order == 'cbrcbr':
-            if cfg.UNET.ENABLE_NORM:
+            if norm:
                 self.num_gr = 8 if out_ch % 8 == 0 else out_ch
                 self.conv = nn.Sequential(
-                    nn.Conv2d(in_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
-                    (nn.BatchNorm2d(out_ch)) if not cfg.UNET.GROUP_NORM else (nn.GroupNorm(cfg.UNET.NUM_GR, out_ch)),
+                    nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
+                    (nn.BatchNorm2d(out_ch)) if use_batch_norm else (nn.GroupNorm(group_norm_num_groups, out_ch)),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(out_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
-                    (nn.BatchNorm2d(out_ch)) if not cfg.UNET.GROUP_NORM else (nn.GroupNorm(cfg.UNET.NUM_GR, out_ch)),
+                    nn.Conv2d(out_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
+                    (nn.BatchNorm2d(out_ch)) if use_batch_norm else (nn.GroupNorm(group_norm_num_groups, out_ch)),
                     nn.ReLU(inplace=True)
                 )
             else:
                 self.num_gr = 8 if out_ch % 8 == 0 else out_ch
                 self.conv = nn.Sequential(
-                    nn.Conv2d(in_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
+                    nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(out_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
+                    nn.Conv2d(out_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
                     nn.ReLU(inplace=True)
                 )
 
         elif bn_conv_order == 'brcbrc':
-            if cfg.UNET.ENABLE_NORM:
+            if norm:
                 self.num_gr = 8 if out_ch % 8 == 0 else out_ch
                 self.conv = nn.Sequential(
-                    (nn.BatchNorm2d(in_ch)) if not cfg.UNET.GROUP_NORM else (nn.GroupNorm(cfg.UNET.NUM_GR, in_ch)),
+                    (nn.BatchNorm2d(in_ch)) if use_batch_norm else (nn.GroupNorm(group_norm_num_groups, in_ch)),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(in_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
-                    (nn.BatchNorm2d(out_ch)) if not cfg.UNET.GROUP_NORM else (nn.GroupNorm(cfg.UNET.NUM_GR, out_ch)),
+                    nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
+                    (nn.BatchNorm2d(out_ch)) if use_batch_norm else (nn.GroupNorm(group_norm_num_groups, out_ch)),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(out_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1))
+                    nn.Conv2d(out_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1))
                 )
 
             else:
                 self.num_gr = 8 if out_ch % 8 == 0 else out_ch
                 self.conv = nn.Sequential(
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(in_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
+                    nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(out_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1))
+                    nn.Conv2d(out_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1))
                 )
 
         else:
-            raise ValueError('bn_conv_order:"{}" not supported.'.format(bn_conv_order))
+            raise ValueError(f'bn_conv_order:"{bn_conv_order}" not supported.')
 
     def forward(self, x):
         x = self.conv(x)
@@ -255,38 +253,42 @@ class Double_conv_old(nn.Module):
 
 
 class Double_conv(nn.Module):
-    def __init__(self, in_ch, out_ch, valid=True, bn_conv_order='brcbrc', multi_gpu=False, strd=1):
+    def __init__(self, in_ch, out_ch, valid=True, bn_conv_order='brcbrc', stride=1, norm='batch_norm'):
         super(Double_conv, self).__init__()
-        if cfg.UNET.ENABLE_NORM:
+
+        use_batch_norm = norm == 'batch_norm'
+        group_norm_num_groups = int(norm.split('_')[-1]) if norm.beginswith('group_norm') else None
+
+        if norm:
             if bn_conv_order == 'cbrcbr':
                 self.num_gr = 8 if out_ch % 8 == 0 else out_ch
                 self.conv = nn.Sequential(
-                    nn.Conv2d(in_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
-                    (nn.BatchNorm2d(out_ch)) if not cfg.UNET.GROUP_NORM else (nn.GroupNorm(cfg.UNET.NUM_GR, out_ch)),
+                    nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
+                    (nn.BatchNorm2d(out_ch)) if use_batch_norm else (nn.GroupNorm(group_norm_num_groups, out_ch)),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(out_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
-                    (nn.BatchNorm2d(out_ch)) if not cfg.UNET.GROUP_NORM else (nn.GroupNorm(cfg.UNET.NUM_GR, out_ch)),
+                    nn.Conv2d(out_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
+                    (nn.BatchNorm2d(out_ch)) if use_batch_norm else (nn.GroupNorm(group_norm_num_groups, out_ch)),
                     nn.ReLU(inplace=True)
                 )
             elif bn_conv_order == 'brcbrc':
                 self.num_gr = 8 if out_ch % 8 == 0 else out_ch
                 self.conv = nn.Sequential(
-                    (nn.BatchNorm2d(in_ch)) if not cfg.UNET.GROUP_NORM else (nn.GroupNorm(cfg.UNET.NUM_GR, in_ch)),
+                    (nn.BatchNorm2d(in_ch)) if use_batch_norm else (nn.GroupNorm(group_norm_num_groups, in_ch)),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(in_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
-                    (nn.BatchNorm2d(out_ch)) if not cfg.UNET.GROUP_NORM else (nn.GroupNorm(cfg.UNET.NUM_GR, out_ch)),
+                    nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
+                    (nn.BatchNorm2d(out_ch)) if use_batch_norm else (nn.GroupNorm(group_norm_num_groups, out_ch)),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(out_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1))
+                    nn.Conv2d(out_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1))
                 )
             else:
-                raise ValueError('bn_conv_order:"{}" not supported.'.format(bn_conv_order))
+                raise ValueError(f'bn_conv_order:"{bn_conv_order}" not supported.')
 
         else:
             self.num_gr = 8 if out_ch % 8 == 0 else out_ch
             self.conv = nn.Sequential(
-                nn.Conv2d(in_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
+                nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(out_ch, out_ch, 3, stride=strd, padding=(0 if valid else 1)),
+                nn.Conv2d(out_ch, out_ch, 3, stride=stride, padding=(0 if valid else 1)),
                 nn.ReLU(inplace=True)
             )
 
@@ -373,12 +375,12 @@ class UpX(nn.Module):
 
 
 class Outconv(nn.Module):
-    def __init__(self, in_ch, out_ch, dim=2):
+    def __init__(self, in_ch, out_ch, dim=2, valid_mode=True):
         super(Outconv, self).__init__()
         if dim == 2:
-            self.conv = nn.Conv2d(in_ch, out_ch, 1, padding=(0 if not cfg.UNET.VALID_MODE else 1))
+            self.conv = nn.Conv2d(in_ch, out_ch, 1, padding=(0 if not valid_mode else 1))
         else:
-            self.conv = nn.Conv3d(in_ch, out_ch, 1, padding=(0 if not cfg.UNET.VALID_MODE else 1))
+            self.conv = nn.Conv3d(in_ch, out_ch, 1, padding=(0 if not valid_mode else 1))
 
     def forward(self, x):
         x = self.conv(x)
@@ -386,11 +388,11 @@ class Outconv(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, in_ch, num_domains=1, valid=True, bn_conv_order='brcbrc', grad_scale=0.5):
+    def __init__(self, in_ch, num_domains=1, valid_mode=True, bn_conv_order='brcbrc', grad_scale=0.5):
         super(Classifier, self).__init__()
 
         self.grad_scale = grad_scale
-        self.doubleconv = Double_conv(in_ch, in_ch, valid=valid, bn_conv_order=bn_conv_order, strd=2)
+        self.doubleconv = Double_conv(in_ch, in_ch, valid=valid_mode, bn_conv_order=bn_conv_order, stride=2)
         self.outconv = nn.Conv2d(in_ch, num_domains, 1)
 
     def forward(self, x):

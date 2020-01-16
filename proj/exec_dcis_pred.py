@@ -27,7 +27,7 @@ from manet.nn.training.optim import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
-from manet.nn.unet.unet2d import UNet
+from manet.nn.unet.unet2d_classifier import UNet
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys.io import link_data, read_list, read_json
