@@ -29,8 +29,9 @@ class Args(argparse.ArgumentParser):
         self.add_argument('--seed', default=42, type=int, help='Seed for random number generators')
         self.add_argument('--num-workers', type=int, default=4, help='Number of workers')
         self.add_argument('--cfg', help='Config file for training (and optionally testing)', required=True, type=str)
-        self.add_argument('--checkpoint', type=str,
+        self.add_argument('--checkpoint', type=pathlib.Path,
                           help='Path to an existing checkpoint. Used optionally along with "--resume"')
+        self.add_argument('--data-source', type=pathlib.Path, default='/data', help='Path to the dataset')
         self.add_argument('--name', help='Run name, if None use config name.', default=None, type=str)
         self.add_argument('--no-rsync', dest='no_rsync', help='use symbolic links instead', action='store_true')
         self.add_argument('--baseline', help='load baseline', action='store_true')

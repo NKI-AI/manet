@@ -11,6 +11,7 @@ import os
 import SimpleITK as sitk
 import numpy as np
 import tempfile
+import pathlib
 
 _DICOM_MODALITY_TAG = '0008|0060'
 _DICOM_VOI_LUT_FUNCTION = '0028|1056'
@@ -111,7 +112,7 @@ def read_image(filename, force_2d=False, dtype=None, no_metadata=False, **kwargs
 
     Parameters
     ----------
-    filename : str
+    filename : Path, str
         Path to image, can be any SimpleITK supported filename
     force_2d : bool
         If the image is 2D it can happen the image is presented as 3D but with (height, width, 1),
@@ -125,7 +126,8 @@ def read_image(filename, force_2d=False, dtype=None, no_metadata=False, **kwargs
     -------
     Image as ndarray and dictionary with metadata.
     """
-    if not os.path.exists(filename):
+    filename = pathlib.Path(filename)
+    if not filename.exists():
         raise FileNotFoundError(f'{filename} does not exist.')
 
     new_spacing = kwargs.get('spacing', False)
@@ -169,7 +171,7 @@ def read_image(filename, force_2d=False, dtype=None, no_metadata=False, **kwargs
     if dtype:
         image = image.astype(dtype)
 
-    if no_meta:
+    if no_metadata:
         return image
 
     return image, metadata

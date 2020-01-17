@@ -11,6 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
 import matplotlib
+import pathlib
 if (not cfg.DRAW_PLOT) and cfg.SAVE_PLOT:
     matplotlib.use('Agg')
 import numpy as np
@@ -151,11 +152,11 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
 
 def build_model(device):
     model = UNet(
-        1, 2, valid=cfg.UNET.VALID_MODE, mode=cfg.UNET.MODE,
-        depth=cfg.UNET.DEPTH, dropout_depth=cfg.UNET.DROPOUT_DEPTH,
-        dropout_prob=cfg.UNET.DROPOUT_PROB, channels_base=cfg.UNET.CHANNELS_BASE,
-        domain_classifier=cfg.UNET.USE_CLASSIFIER, forward_domain_cls=cfg.UNET.FEED_CLS,
-        bn_conv_order=cfg.UNET.BN_ORDER).to(device)
+        1, 2, valid=True, upsample_mode='nearest',
+        depth=4, dropout_depth=2,
+        dropout_prob=0.0, channels_base=64,
+        domain_classifier=False, forward_domain_cls=False,
+        bn_conv_order='brcbrc').to(device)
     return model
 
 
@@ -172,8 +173,8 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     # Build datasets
     train_transforms = None
 
-    train_set = MammoDataset(training_description, transform=train_transforms)
-    validation_set = MammoDataset(validation_description)
+    train_set = MammoDataset(training_description, data_source, transform=train_transforms)
+    validation_set = MammoDataset(validation_description, data_source)
     logger.info(f'Train dataset size: {len(train_set)} Validation data size: {len(validation_set)}')
 
     # Build samplers
@@ -250,14 +251,6 @@ def main(args):
           log_level=logging.INFO if not args.debug else logging.DEBUG)
     logger.info(vars(args))
 
-    logger.info('Linking data')
-    if args.local_rank == 0:
-        if args.no_rsync:
-            logger.info(f'Assuming data is in {cfg.DATA_SOURCE}')
-        else:
-            link_data(cfg.DATA_SOURCE, cfg.INPUT_DIR)
-    data_source = cfg.DATA_SOURCE if args.no_rsync else cfg.INPUT_DIR
-
     if cfg.MULTIGPU == 2:
         logger.info('Initializing process groups.')
         torch.cuda.set_device(args.local_rank)
@@ -285,7 +278,7 @@ def main(args):
 
     # Create dataset and initializer LR scheduler
     logger.info('Creating datasets')
-    train_loader, train_sampler, train_set, eval_loader, eval_sampler = init_train_data(args, cfg, data_source)
+    train_loader, train_sampler, train_set, eval_loader, eval_sampler = init_train_data(args, cfg, args.data_source)
     solver_steps = [_ * len(train_loader) for _ in
                     range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
     lr_scheduler = WarmupMultiStepLR(optimizer, solver_steps, cfg.LR_GAMMA, warmup_factor=1 / 10.,

@@ -173,6 +173,7 @@ def get_random_shift_bbox(bbox, minoverlap=0.3, exclude=[]):
 
     return list(out_coords) + list(bbox_size)
 
+
 def add_dim(bbox, dim_sz, pre=True, coord=0):
     """Add extra dimension to bbox of size dim_sz
     """

@@ -48,9 +48,21 @@ def write_list(filename, lst):
 
 
 def read_list(filename):
+    """
+    Read file line by line, ignoring lines starting with '# '
+
+    Parameters
+    ----------
+    filename : str or pathlib.Path
+
+    Returns
+    -------
+    list
+    """
+
     with open(filename, 'r') as f:
         lines = f.readlines()
-    return [line.rstrip('\n') for line in lines]
+    return [line.rstrip('\n') for line in lines if not line.startswith('# ')]
 
 
 def dump_json(filename, obj, indent=2):

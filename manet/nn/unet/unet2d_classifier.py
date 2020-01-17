@@ -88,7 +88,7 @@ def unet_admissible_outputs(largest_output, depth):
 
 class UNet(nn.Module):
     def __init__(self, num_channels, num_classes, valid=True,
-                 mode='nearest', depth=4, dropout_depth=2, dropout_prob=0.5, channels_base=64,
+                 upsample_mode='nearest', depth=4, dropout_depth=2, dropout_prob=0.5, channels_base=64,
                  bn_conv_order='brcbrc', domain_classifier=False, forward_domain_cls=False, num_domains=1,
                  valid_mode=False, gradient_multiplication_scale=False):
         """2D U-Net model implementation 4 x down and upscale
@@ -101,7 +101,7 @@ class UNet(nn.Module):
                 number of output classes
             valid : bool
                 use valid convolutions instead of zero padded convolutions
-            mode : str
+            upsample_mode : str
                 upsampling mode, can be: nearest, bilinear, etc...
             channels_base : int
                 initial base channels for each double convolution
@@ -131,11 +131,11 @@ class UNet(nn.Module):
             self.downs.append(downer)
             if self.forward_domain_cls and self.use_classifier:
                 upper = UpX(channels_base * 2 ** (depth - idx) + 1, channels_base * 2 ** (depth - idx - 1),
-                            channels_base * 2 ** (depth - idx - 1), valid, mode=mode,
+                            channels_base * 2 ** (depth - idx - 1), valid, mode=upsample_mode,
                             bn_conv_order=bn_conv_order)
             else:
                 upper = Up(channels_base * 2 ** (depth - idx), channels_base * 2 ** (depth - idx - 1),
-                           channels_base * 2 ** (depth - idx - 1), valid, mode=mode,
+                           channels_base * 2 ** (depth - idx - 1), valid, mode=upsample_mode,
                            bn_conv_order=bn_conv_order)
             self.ups.append(upper)
 
@@ -147,7 +147,6 @@ class UNet(nn.Module):
                 self.clsf = Classifier(channels_base * 2 ** depth, num_domains=self.num_domains,
                                        grad_scale=1.0 if not self.gradient_multiplication_scale else
                                        self.gradient_multiplication_scale)
-        self.multi_gpu = multi_gpu
         self.init_weights()
 
     def forward(self, x):
@@ -201,7 +200,7 @@ class Double_conv_old(nn.Module):
         super(Double_conv, self).__init__()
 
         use_batch_norm = norm == 'batch_norm'
-        group_norm_num_groups = int(norm.split('_')[-1]) if norm.beginswith('group_norm') else None
+        group_norm_num_groups = int(norm.split('_')[-1]) if norm.startswith('group_norm') else None
 
         if bn_conv_order == 'cbrcbr':
             if norm:
@@ -257,7 +256,7 @@ class Double_conv(nn.Module):
         super(Double_conv, self).__init__()
 
         use_batch_norm = norm == 'batch_norm'
-        group_norm_num_groups = int(norm.split('_')[-1]) if norm.beginswith('group_norm') else None
+        group_norm_num_groups = int(norm.split('_')[-1]) if norm.startswith('group_norm') else None
 
         if norm:
             if bn_conv_order == 'cbrcbr':

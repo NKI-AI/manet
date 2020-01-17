@@ -7,7 +7,7 @@ LICENSE file in the root directory of this source tree.
 
 import logging
 from torch.utils.data import Dataset
-from manet.sys.io import read_json
+from manet.sys.io import read_json, dump_json
 from manet.utils.bbox import bounding_box
 from manet.utils.readers import read_image
 from pathlib import Path
@@ -16,16 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 class MammoDataset(Dataset):
-    def __init__(self, dataset_description, transform=None):
+    def __init__(self, dataset_description, data_root, transform=None):
         super().__init__()
         self.logger = logging.getLogger(type(self).__name__)
 
+        self.data_root = data_root
         self.transform = transform
 
         self.filter_negatives = True
         self.use_bounding_boxes = True
 
-        if isinstance([str, Path], dataset_description):
+        if isinstance(dataset_description, (str, Path)):
             self.logger.info(f'Loading dataset description from file {dataset_description}.')
             dataset_description = read_json(dataset_description)
         self.dataset_description = dataset_description
@@ -39,20 +40,21 @@ class MammoDataset(Dataset):
             self.logger.debug(f'Parsing directory {path}.')
             curr_data_dict = {'case_path': path}
             for image_dict in self.dataset_description[path]:
-                curr_data_dict['image_fn'] = image_dict['image']
+                curr_data_dict['image_fn'] = image_dict['filename']
                 if self.filter_negatives and 'label' in image_dict:
                     label_fn = image_dict['label']
                     if self.use_bounding_boxes:
                         bbox = self.compute_bounding_box(label_fn)
-                    curr_data_dict['label_fn'] = label_fn
+                    curr_data_dict['label'] = label_fn
                     curr_data_dict['bbox'] = bbox
-            self.data.append(curr_data_dict)
+                self.data.append(curr_data_dict)
 
         self.logger.info(f'Loaded dataset of size {len(self.data)}.')
 
-    @staticmethod
-    def compute_bounding_boxes(label_fn):
-        label_arr = read_image(label_fn, force_2d=True, no_metadata=True)
+    def compute_bounding_box(self, label_fn):
+        self.logger.info(f'Computing bounding box for {label_fn}.')
+        label_arr = read_image(self.data_root / label_fn, force_2d=True, no_metadata=True)
+
         bbox = bounding_box(label_arr)
         return bbox
 
@@ -81,3 +83,5 @@ class MammoDataset(Dataset):
 
         return sample
 
+    def __len__(self):
+        return len(self.data)
