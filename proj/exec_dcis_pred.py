@@ -22,12 +22,14 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from apex import amp
 import apex
-import SimpleITK as sitk
+# import torchvision
+
 from manet.nn.common.tensor_ops import reduce_tensor_dict
 from manet.nn.training.optim import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
+from manet.data.augmentations import CropAroundBbox
 from manet.nn.unet.unet2d_classifier import UNet
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
@@ -172,10 +174,10 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
 
     # Build datasets
-    train_transforms = None
+    train_transforms = CropAroundBbox((1, 1024, 1024))  # torchvision.transforms.Compose([CropAroundBbox()])
 
     train_set = MammoDataset(training_description, data_source, transform=train_transforms)
-    validation_set = MammoDataset(validation_description, data_source)
+    validation_set = MammoDataset(validation_description, data_source, transform=train_transforms)
     logger.info(f'Train dataset size: {len(train_set)}. '
                 f'Validation data size: {len(validation_set)}.')
 

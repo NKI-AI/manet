@@ -8,7 +8,7 @@ LICENSE file in the root directory of this source tree.
 import numpy as np
 import cv2
 from skimage.transform import rescale, rotate
-from manet.utils.bbox import crop_to_bbox, combine_bbox, split_bbox, BoundingBox
+from manet.utils.bbox import crop_to_bbox, combine_bbox, split_bbox, BoundingBox, add_dim
 from config.base_config import cfg
 
 
@@ -57,23 +57,23 @@ class CropAroundBbox(object):
     def __init__(self, output_size=None):
         self.output_size = np.asarray(output_size)
 
-    def apply(self, sample):
+    def __call__(self, sample):
         bbox = BoundingBox(sample['bbox'])
-        if np.all(bbox.size <= self.output_size):
+        effective_output_size = self.output_size[-bbox.ndim:]
+        if np.all(bbox.size <= effective_output_size):
             # A center crop is fine.
-            new_bbox = bbox.bounding_box_around_center(self.output_size)
+            new_bbox = bbox.bounding_box_around_center(effective_output_size)
         else:
             starting_point = bbox.coordinates
-            delta = np.clip(self.output_size - bbox.size, 0, bbox.size.max()) // 2
-            jitter = np.random.randomint(-delta, delta + 1)
+            delta = np.clip(effective_output_size - bbox.size, 0, bbox.size.max()) // 2
+            jitter = np.random.randint(-delta, delta + 1)
             # Here it makes sense to overwrite the add operator of bounding box
             new_bbox = combine_bbox(starting_point - jitter, self.output_size)
 
-            # In this case we just find a sensible center and do the same thing.
-
         del sample['bbox']
-        sample['image'] = crop_to_bbox(sample['image'], new_bbox)
-        sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
+        # TODO: Extra dimension is not always needed.
+        sample['image'] = crop_to_bbox(sample['image'], new_bbox.add_dim(0))
+        sample['mask'] = crop_to_bbox(sample['mask'], new_bbox.add_dim(0))
 
         return sample
 

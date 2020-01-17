@@ -13,6 +13,7 @@ class BoundingBox(object):
     def __init__(self, bbox):
         self.bbox = np.asarray(bbox)
         self.coordinates, self.size = split_bbox(bbox)
+        self.ndim = len(self.bbox) // 2
 
     @property
     def center(self):
@@ -21,6 +22,12 @@ class BoundingBox(object):
     def bounding_box_around_center(self, output_size):
         output_size = np.asarray(output_size)
         return BoundingBox(combine_bbox(self.center - output_size // 2, output_size))
+
+    def add_dim(self, axis=0):
+        bbox = self.bbox
+        # TODO: add_dim below is very counterintuitive.
+        bbox = add_dim(bbox, 1, self.ndim - axis)
+        return BoundingBox(bbox)
 
     def __add__(self, x):
         self.coordinates_2, self.size_2 = x.coordinates, x.size
@@ -174,16 +181,16 @@ def get_random_shift_bbox(bbox, minoverlap=0.3, exclude=[]):
     return list(out_coords) + list(bbox_size)
 
 
-def add_dim(bbox, dim_sz, pre=True, coord=0):
+def add_dim(bbox, dim_sz, pre=True, axis=0):
     """Add extra dimension to bbox of size dim_sz
     """
     bbox_coords, bbox_size = split_bbox(bbox)
     if pre:
-        bbox_coords = [coord] + bbox_coords.tolist()
+        bbox_coords = [axis] + bbox_coords.tolist()
         bbox_size = [dim_sz] + bbox_size.tolist()
     else:
-        bbox_coords = bbox_coords.tolist() + [coord]
-        bbox_size =  bbox_size.tolist() + [dim_sz]
+        bbox_coords = bbox_coords.tolist() + [axis]
+        bbox_size = bbox_size.tolist() + [dim_sz]
     return combine_bbox(bbox_coords, bbox_size)
 
 
@@ -283,5 +290,5 @@ def crop_to_bbox(image, bbox, pad_value=0):
     patch = pad_value*np.ones(bbox_size, dtype=image.dtype)
     patch_idx = [slice(i, j) for i, j
                  in zip(l_offset, bbox_size - r_offset)]
-    patch[patch_idx] = out
+    patch[tuple(patch_idx)] = out
     return patch
