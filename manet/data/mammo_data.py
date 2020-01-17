@@ -60,7 +60,7 @@ class MammoDataset(Dataset):
 
     def compute_bounding_box(self, label_fn):
         self.logger.debug(f'Computing bounding box for {label_fn}.')
-        # TODO: Better bulding of cache names.
+        # TODO: Better building of cache names.
         bbox_cache = self.cache_dir / hashlib.sha224(str(label_fn).encode()).hexdigest()
         if bbox_cache.exists():
             bbox = read_json(bbox_cache)[str(label_fn)]
@@ -88,12 +88,16 @@ class MammoDataset(Dataset):
         bbox = data_dict['bbox']
 
         image = read_image(image_fn, force_2d=True, no_metadata=True, dtype=np.float32)[np.newaxis, ...]
-        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.float32)[np.newaxis, ...]
+        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)
 
         sample = {'image': image, 'mask': mask, 'bbox': bbox}
 
         if self.transform:
-            sample = self.transform(sample)
+            try:
+                sample = self.transform(sample)
+            except Exception as e:
+                print(bbox, image.shape, sample['image'].shape, mask.shape, sample['mask'].shape, e)
+                sys.exit()
 
         return sample
 

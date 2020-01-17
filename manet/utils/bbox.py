@@ -23,10 +23,13 @@ class BoundingBox(object):
         output_size = np.asarray(output_size)
         return BoundingBox(combine_bbox(self.center - output_size // 2, output_size))
 
-    def add_dim(self, axis=0):
-        bbox = self.bbox
-        # TODO: add_dim below is very counterintuitive.
-        bbox = add_dim(bbox, 1, self.ndim - axis)
+    def squeeze(self, axis=0):
+        bbox = self.bbox[:]
+        coordinates, size = split_bbox(bbox)
+        coordinates = np.insert(coordinates, 0, 0, axis=axis)
+        size = np.insert(size, 0, 1, axis=axis)
+        bbox = combine_bbox(coordinates, size)
+
         return BoundingBox(bbox)
 
     def __add__(self, x):
@@ -40,6 +43,9 @@ class BoundingBox(object):
 
     def __getitem__(self, idx):
         return self.bbox[idx]
+
+    def __str__(self):
+        return f'BoundingBox({self.bbox}))'
 
 
 def split_bbox(bbox):
@@ -181,17 +187,17 @@ def get_random_shift_bbox(bbox, minoverlap=0.3, exclude=[]):
     return list(out_coords) + list(bbox_size)
 
 
-def add_dim(bbox, dim_sz, pre=True, axis=0):
-    """Add extra dimension to bbox of size dim_sz
-    """
-    bbox_coords, bbox_size = split_bbox(bbox)
-    if pre:
-        bbox_coords = [axis] + bbox_coords.tolist()
-        bbox_size = [dim_sz] + bbox_size.tolist()
-    else:
-        bbox_coords = bbox_coords.tolist() + [axis]
-        bbox_size = bbox_size.tolist() + [dim_sz]
-    return combine_bbox(bbox_coords, bbox_size)
+# def add_dim(bbox, dim_sz, pre=True, axis=0):
+#     """Add extra dimension to bbox of size dim_sz
+#     """
+#     bbox_coords, bbox_size = split_bbox(bbox)
+#     if pre:
+#         bbox_coords = [axis] + bbox_coords.tolist()
+#         bbox_size = [dim_sz] + bbox_size.tolist()
+#     else:
+#         bbox_coords = bbox_coords.tolist() + [axis]
+#         bbox_size = bbox_size.tolist() + [dim_sz]
+#     return combine_bbox(bbox_coords, bbox_size)
 
 
 def project_bbox(bbox, exclude=[]):
@@ -275,6 +281,7 @@ def crop_to_bbox(image, bbox, pad_value=0):
     # Offsets
     l_offset = -bbox_coords.copy()
     l_offset[l_offset < 0] = 0
+
     r_offset = (bbox_coords + bbox_size) - np.array(image.shape)
     r_offset[r_offset < 0] = 0
 

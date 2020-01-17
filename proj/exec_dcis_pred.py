@@ -31,6 +31,7 @@ from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
 from manet.data.augmentations import CropAroundBbox
 from manet.nn.unet.unet2d_classifier import UNet
+from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys.io import link_data, read_list, read_json
@@ -46,7 +47,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK), 'topkbce': TopkBCELogits(top_k=cfg.TOPK)}[cfg.LOSS]
+    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
@@ -56,6 +57,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
         train_loss = torch.tensor(0.).to(args.device)
         output = torch.squeeze(model(image), dim=1)
+
         train_loss += loss_fn(output, mask)
 
         # Backprop the loss, use APEX if necessary
@@ -82,7 +84,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        train_dice = dice_fn(output, mask)
+        train_dice = dice_fn(output[0, 0, ...], mask)
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}
@@ -113,8 +115,9 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
     losses = []
     dices = []
     start = time.perf_counter()
-    loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK, reduce=False),
-               'topkbce': TopkBCELogits(top_k=cfg.TOPK, reduce=False)}[cfg.LOSS]
+    # loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK, reduce=False),
+    #            'topkbce': TopkBCELogits(top_k=cfg.TOPK, reduce=False)}[cfg.LOSS]
+    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True, reduce=False)
 
     out_volumes = {}
@@ -154,12 +157,16 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
 
 
 def build_model(device):
-    model = UNet(
-        1, 2, valid=True, upsample_mode='nearest',
-        depth=4, dropout_depth=2,
-        dropout_prob=0.0, channels_base=32,
-        domain_classifier=False, forward_domain_cls=False,
-        bn_conv_order='brcbrc').to(device)
+    # model = UNet(
+    #     1, 2, valid=True, upsample_mode='nearest',
+    #     depth=4, dropout_depth=2,
+    #     dropout_prob=0.0, channels_base=32,
+    #     domain_classifier=False, forward_domain_cls=False,
+    #     bn_conv_order='brcbrc').to(device)
+    model = UnetModel2d(
+        1, 2, (1024, 1024), 64,
+        4, 0.9).to(device)
+
     return model
 
 
@@ -282,7 +289,7 @@ def main(args):
         model, optimizer = amp.initialize(model, optimizer, opt_level=opt_level)
 
     # Create dataset and initializer LR scheduler
-    logger.info('Creating datasets')
+    logger.info('Creating datasets.')
     train_loader, train_sampler, train_set, eval_loader, eval_sampler = init_train_data(args, cfg, args.data_source, use_weights=False)
     solver_steps = [_ * len(train_loader) for _ in
                     range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]

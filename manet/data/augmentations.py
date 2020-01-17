@@ -8,7 +8,7 @@ LICENSE file in the root directory of this source tree.
 import numpy as np
 import cv2
 from skimage.transform import rescale, rotate
-from manet.utils.bbox import crop_to_bbox, combine_bbox, split_bbox, BoundingBox, add_dim
+from manet.utils.bbox import crop_to_bbox, combine_bbox, BoundingBox
 from config.base_config import cfg
 
 
@@ -68,12 +68,12 @@ class CropAroundBbox(object):
             delta = np.clip(effective_output_size - bbox.size, 0, bbox.size.max()) // 2
             jitter = np.random.randint(-delta, delta + 1)
             # Here it makes sense to overwrite the add operator of bounding box
-            new_bbox = combine_bbox(starting_point - jitter, self.output_size)
+            new_bbox = BoundingBox(combine_bbox(starting_point - jitter, effective_output_size))
 
-        del sample['bbox']
+        # del sample['bbox']
         # TODO: Extra dimension is not always needed.
-        sample['image'] = crop_to_bbox(sample['image'], new_bbox.add_dim(0))
-        sample['mask'] = crop_to_bbox(sample['mask'], new_bbox.add_dim(0))
+        sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
+        sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
 
         return sample
 
