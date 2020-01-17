@@ -1,6 +1,7 @@
 DEBUG: true
 MULTIGPU: 0
 APEX: 1
+BATCH_SZ: 1
 STARTER_LR: 0.0001
 UNET:
  AUG_LST: ['RandomShiftTransform', 'RandomZoomTransform']

@@ -33,10 +33,10 @@ class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
             raise ValueError(f'Milestones should be a list of increasing integers. Got {milestones}.')
 
         if warmup_method not in ('constant', 'linear'):
-            raise ValueError(f'Only `constant` or `linear` warmup_method accepted got {warmup_method}')
+            raise ValueError(f'Only `constant` or `linear` warmup_method accepted got {warmup_method}.')
 
         self.logger.info(f'Initialized with gamma {gamma}, warmup_factor {warmup_factor},'
-                         f' warmup_iters {warmup_iters} and warmup_method {warmup_method}')
+                         f' warmup_iters {warmup_iters} and warmup_method {warmup_method}.')
 
         self.milestones = milestones
         self.gamma = gamma
