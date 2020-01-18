@@ -189,7 +189,6 @@ def _apply_window_level(sitk_image, voi_lut_fn='LINEAR', out_range=[0, 255], whi
     -------
     SimpleITK image
     """
-
     center = sitk_image.GetMetaData(
         _DICOM_WINDOW_CENTER_TAG).strip()
     width = sitk_image.GetMetaData(
@@ -246,7 +245,7 @@ def _apply_window_level(sitk_image, voi_lut_fn='LINEAR', out_range=[0, 255], whi
     return sitk_image
 
 
-def read_dcm(filename, window_leveling=True, dtype=None, **kwargs):
+def read_dcm(filename, window_leveling=False, dtype=None, **kwargs):
     """Read single dicom files. Tries to apply VOILutFunction if available.
     Check if the file is a mammogram or not.
 
@@ -306,8 +305,8 @@ def read_dcm(filename, window_leveling=True, dtype=None, **kwargs):
     if window_leveling:
         try:
             sitk_image = _apply_window_level(sitk_image, voi_lut_func)
-        except NotImplementedError as e:
-            raise NotImplementedError(f'{filename}: {e}')
+        except RuntimeError as e:
+            raise RuntimeError(f'{filename}: {e}')
 
     data = sitk.GetArrayFromImage(sitk_image)
     if dtype:

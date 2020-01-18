@@ -120,15 +120,10 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
     loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True, reduce=False)
 
-    out_volumes = {}
-    out_meta = {}
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
             image = batch['image'].to(args.device)
             mask = batch['mask'].to(args.device)
-            src_bbox = batch['src_bbox'].cpu().numpy()
-            src_volume = batch['src_volume']
-            slice_idx = batch['slice_idx'].cpu().numpy()
             output = torch.squeeze(model(image), dim=1)
 
             batch_loss = loss_fn(output, mask)
