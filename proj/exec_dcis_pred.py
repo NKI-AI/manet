@@ -29,7 +29,7 @@ from manet.nn.training.optim import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
-from manet.data.augmentations import CropAroundBbox
+from manet.data.transforms import Compose, CropAroundBbox, ClipAndScale
 from manet.nn.unet.unet2d_classifier import UNet
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.training.sampler import build_sampler
@@ -117,8 +117,9 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
     start = time.perf_counter()
     # loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK, reduce=False),
     #            'topkbce': TopkBCELogits(top_k=cfg.TOPK, reduce=False)}[cfg.LOSS]
+
     loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
-    dice_fn = HardDice(cls=1, binary_cls=True, reduce=False)
+    dice_fn = HardDice(cls=1, binary_cls=True)
 
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
@@ -127,7 +128,7 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
             output = torch.squeeze(model(image), dim=1)
 
             batch_loss = loss_fn(output, mask)
-            batch_dice = dice_fn(output, mask)
+            batch_dice = dice_fn(output[0, 0, ...], mask)
 
             for loss in batch_loss:
                 losses.append(loss.item())
@@ -137,6 +138,7 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
 
     metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
                    'DevDice': torch.tensor(np.mean(dices)).to(args.device)}
+
     if cfg.MULTIGPU == 2:
         torch.cuda.synchronize()
         reduce_tensor_dict(metric_dict)
@@ -176,7 +178,10 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
 
     # Build datasets
-    train_transforms = CropAroundBbox((1, 1024, 1024))  # torchvision.transforms.Compose([CropAroundBbox()])
+    train_transforms = Compose([
+        ClipAndScale(None, None, [0, 1]),
+        CropAroundBbox((1, 1024, 1024))
+    ])
 
     train_set = MammoDataset(training_description, data_source, transform=train_transforms)
     validation_set = MammoDataset(validation_description, data_source, transform=train_transforms)

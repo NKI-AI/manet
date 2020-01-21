@@ -8,7 +8,6 @@ LICENSE file in the root directory of this source tree.
 import numpy as np
 
 
-# TODO: This class can be extended so boxes can be added and subtracted.
 class BoundingBox(object):
     def __init__(self, bbox):
         self.bbox = np.asarray(bbox)
@@ -17,6 +16,7 @@ class BoundingBox(object):
 
     @property
     def center(self):
+        # TODO: Should this not return a float?
         return self.coordinates - self.size // 2
 
     def bounding_box_around_center(self, output_size):
@@ -24,6 +24,7 @@ class BoundingBox(object):
         return BoundingBox(combine_bbox(self.center - output_size // 2, output_size))
 
     def squeeze(self, axis=0):
+        """Add an extra axis to the bounding box."""
         bbox = self.bbox[:]
         coordinates, size = split_bbox(bbox)
         coordinates = np.insert(coordinates, 0, 0, axis=axis)
@@ -33,6 +34,10 @@ class BoundingBox(object):
         return BoundingBox(bbox)
 
     def __add__(self, x):
+        """Adding two bounding boxes returns the encapsulating bounding box.
+        """
+        # TODO: Check shapes
+
         self.coordinates_2, self.size_2 = x.coordinates, x.size
         new_coordinates = np.stack([self.coordinates, self.coordinates_2]).min(axis=0)
         new_size = np.stack([self.size, self.size_2]).max(axis=0)
@@ -43,6 +48,9 @@ class BoundingBox(object):
 
     def __getitem__(self, idx):
         return self.bbox[idx]
+
+    def __iter__(self):
+        return iter(self.bbox)
 
     def __str__(self):
         return f'BoundingBox({self.bbox}))'
