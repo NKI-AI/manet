@@ -127,13 +127,12 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
             mask = batch['mask'].to(args.device)
             output = torch.squeeze(model(image), dim=1)
 
+            
             batch_loss = loss_fn(output, mask)
-            batch_dice = dice_fn(output[0, 0, ...], mask)
+            losses.append(batch_loss.item())
 
-            for loss in batch_loss:
-                losses.append(loss.item())
-            for dice in batch_dice:
-                dices.append(dice.item())
+            batch_dice = dice_fn(output[0, 0, ...], mask)
+            dices.append(batch_dice.item())
             del output
 
     metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
@@ -321,7 +320,7 @@ def main(args):
                 train_sampler.set_epoch(epoch)
 
             train_loss, train_time = train_epoch(args, epoch, model, train_loader, optimizer, lr_scheduler, writer)
-            dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, eval_loader, writer, exp_path)
+            dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, eval_loader, writer, exp_path, return_losses=False)
 
             if args.local_rank == 0:
                 save_model(args, exp_path, epoch, model, optimizer, lr_scheduler)
