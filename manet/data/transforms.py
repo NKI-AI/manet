@@ -113,7 +113,13 @@ class CropAroundBbox(object):
 
         # del sample['bbox']
         # TODO: Extra dimension is not always needed.
-        sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
+
+        try:
+            sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
+        except Exception as e:
+            print(sample['image'].shape, bbox, new_bbox, new_bbox.squeeze(0))
+            import sys
+            sys.exit()
         sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
 
         return sample

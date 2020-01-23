@@ -93,11 +93,7 @@ class MammoDataset(Dataset):
         sample = {'image': image, 'mask': mask, 'bbox': bbox}
 
         if self.transform:
-            try:
-                sample = self.transform(sample)
-            except Exception as e:
-                print(bbox, image.shape, sample['image'].shape, mask.shape, sample['mask'].shape, e)
-                sys.exit()
+            sample = self.transform(sample)
 
         return sample
 

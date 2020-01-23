@@ -109,7 +109,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
+def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False):
     model.eval()
 
     losses = []
@@ -127,7 +127,7 @@ def evaluate(args, epoch, model, data_loader, writer, return_losses=False):
             mask = batch['mask'].to(args.device)
             output = torch.squeeze(model(image), dim=1)
 
-            
+
             batch_loss = loss_fn(output, mask)
             losses.append(batch_loss.item())
 
@@ -320,6 +320,7 @@ def main(args):
                 train_sampler.set_epoch(epoch)
 
             train_loss, train_time = train_epoch(args, epoch, model, train_loader, optimizer, lr_scheduler, writer)
+
             dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, eval_loader, writer, exp_path, return_losses=False)
 
             if args.local_rank == 0:
