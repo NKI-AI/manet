@@ -10,7 +10,7 @@ import numpy as np
 
 from manet.utils.readers import read_image
 from manet.utils.bbox import bounding_box
-from manet.sys.io import read_json, dump_json
+from manet.sys.io import read_json, write_json
 from tqdm import tqdm
 
 def parse_json(path):
@@ -43,4 +43,4 @@ def get_stats(label_paths):
 if __name__ == '__main__':
     label_paths = parse_json('mammograms_imported.json')
     stats = get_stats(label_paths)
-    dump_json('label_stats.json', stats)
+    write_json('label_stats.json', stats)

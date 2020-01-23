@@ -11,7 +11,7 @@ import subprocess
 import logging
 import SimpleITK as sitk
 import tifffile as tiff
-import json
+from fexp.utils.io import read_list, write_list, read_json, write_json
 
 logger = logging.getLogger(__name__)
 
@@ -39,41 +39,6 @@ def save_volume(data, fn, dest, scaling=(0.0, 1.0), fmt='tif'):
     elif fmt == 'nrrd':
         img = sitk.GetImageFromArray(scaling[0] + (data / scaling[1]))
         sitk.WriteImage(img, os.path.join(dest, fn))
-
-
-def write_list(filename, lst):
-    with open(filename, 'w') as fo:
-        for val in lst:
-            fo.write(str(val) + '\n')
-
-
-def read_list(filename):
-    """
-    Read file line by line, ignoring lines starting with '# '
-
-    Parameters
-    ----------
-    filename : str or pathlib.Path
-
-    Returns
-    -------
-    list
-    """
-
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-    return [line.rstrip('\n') for line in lines if not line.startswith('# ')]
-
-
-def dump_json(filename, obj, indent=2):
-    with open(filename, 'w') as f:
-        json.dump(obj, f, indent=indent)
-
-
-def read_json(filename):
-    with open(filename, 'r') as outfile:
-        obj = json.load(outfile)
-    return obj
 
 
 def fn_parser(fn, expr, param):

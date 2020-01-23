@@ -7,30 +7,27 @@ LICENSE file in the root directory of this source tree.
 """
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from config.base_config import cfg, cfg_from_file
-from config.base_args import Args
 import matplotlib
-import pathlib
-if (not cfg.DRAW_PLOT) and cfg.SAVE_PLOT:
-    matplotlib.use('Agg')
+
 import numpy as np
 import logging
 import time
 import torch
+import torchvision
+import apex
+
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from apex import amp
-import apex
-# import torchvision
 
+from config.base_config import cfg, cfg_from_file
+from config.base_args import Args
 from manet.nn.common.tensor_ops import reduce_tensor_dict
 from manet.nn.training.optim import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
 from manet.data.transforms import Compose, CropAroundBbox, ClipAndScale
-from manet.nn.unet.unet2d_classifier import UNet
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
@@ -52,13 +49,27 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     optimizer.zero_grad()
 
     for iter_idx, batch in enumerate(data_loader):
-        image = batch['image'].to(args.device)
-        mask = batch['mask'].to(args.device)
+        images = batch['image'].to(args.device)
+        masks = batch['mask'].to(args.device)
+
+        # Log first batch to tensorboard
+        if iter_idx == 0 and epoch == 0:
+            logger.info(f'Logging first batch to Tensorboard.')
+            logger.info(f"Image filenames: {batch['image_fn']}")
+            logger.info(f"Mask filenames: {batch['label_fn']}")
+            logger.info(f"BoundingBox: {batch['bbox']}")
+
+            image_grid = torchvision.utils.make_grid(images)
+            mask_grid = torchvision.utils.make_grid(masks)
+
+            writer.add_image('images', image_grid, 0)
+            writer.add_image('masks', mask_grid, 0)
+            # writer.add_graph(model, images.detach())
 
         train_loss = torch.tensor(0.).to(args.device)
-        output = torch.squeeze(model(image), dim=1)
+        output = torch.squeeze(model(images), dim=1)
 
-        train_loss += loss_fn(output, mask)
+        train_loss += loss_fn(output, masks)
 
         # Backprop the loss, use APEX if necessary
         if cfg.APEX >= 0:
@@ -84,7 +95,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        train_dice = dice_fn(output[0, 0, ...], mask)
+        train_dice = dice_fn(output[0, 0, ...], masks)
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}
@@ -110,6 +121,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
 
 def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False):
+    logger.info(f'Evaluation for epoch {epoch}')
     model.eval()
 
     losses = []
@@ -121,11 +133,16 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True)
 
+    display_images = []
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
             image = batch['image'].to(args.device)
             mask = batch['mask'].to(args.device)
             output = torch.squeeze(model(image), dim=1)
+
+            if iter_idx < 5:
+                image_arr = image.detach().cpu().numpy()
+                output_arr = output.detach().cpu().numpy()
 
 
             batch_loss = loss_fn(output, mask)
@@ -144,6 +161,8 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     if args.local_rank == 0:
         for key in metric_dict:
             writer.add_scalar(key, metric_dict[key].item(), epoch)
+
+
 
     torch.cuda.empty_cache()
     if return_losses:
@@ -225,8 +244,20 @@ def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    dev_loss, dev_dice, dev_time, losses = evaluate(args, epoch, model, eval_loader, writer, exp_path, return_losses=True)
-    new_weights = dataset.get_weights(losses)
+    dev_loss, dev_dice, dev_time, losses = evaluate(
+        args, epoch, model, eval_loader, writer, exp_path, return_losses=True)
+
+    idx_losses = list(enumerate(losses))
+    idx_losses = sorted(idx_losses, key=lambda v: -v[1])
+    new_weights = np.ones(len(dataset))
+    PERCENTILE = 0.1
+    SCALE = 2.0
+
+    for idx in range(int(len(idx_losses) * PERCENTILE)):
+        n_idx, _ = idx_losses[idx]
+        new_weights[n_idx] *= SCALE
+        new_weights /= len(new_weights)
+
     train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distr)
     if cfg.MULTIGPU == 2:
         train_sampler.set_epoch(epoch)
@@ -321,7 +352,8 @@ def main(args):
 
             train_loss, train_time = train_epoch(args, epoch, model, train_loader, optimizer, lr_scheduler, writer)
 
-            dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, eval_loader, writer, exp_path, return_losses=False)
+            dev_loss, dev_dice, dev_time = evaluate(
+                args, epoch, model, eval_loader, writer, exp_path, return_losses=False)
 
             if args.local_rank == 0:
                 save_model(args, exp_path, epoch, model, optimizer, lr_scheduler)
@@ -330,10 +362,10 @@ def main(args):
                     f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '
                     f'TrainTime = {train_time:.4f}s DevTime = {dev_time:.4f}s',
                 )
-            if (cfg.HARD_MINING_FREQ > 0) and (epoch + 1) % cfg.HARD_MINING_FREQ == 0:
-                del train_loader, train_sampler
-                logger.info('Updating samplers for hard mining.')
-                train_loader, train_sampler = update_train_sampler(args, epoch, model, cfg, train_set, writer, exp_path)
+            # if (cfg.HARD_MINING_FREQ > 0) and (epoch + 1) % cfg.HARD_MINING_FREQ == 0:
+            #     del train_loader, train_sampler
+            #     logger.info('Updating samplers for hard mining.')
+            #     train_loader, train_sampler = update_train_sampler(args, epoch, model, cfg, train_set, writer, exp_path)
 
     # Test model if necessary
     if args.test:
@@ -343,6 +375,7 @@ def main(args):
             f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '
             f'TrainTime = {train_time:.4f}s DevTime = {dev_time:.4f}s',
         )
+    writer.close()
 
 
 if __name__ == '__main__':

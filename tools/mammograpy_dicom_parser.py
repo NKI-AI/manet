@@ -1,8 +1,15 @@
+"""
+Copyright (c) Nikita Moriakov and Jonas Teuwen
+
+This source code is licensed under the MIT license found in the
+LICENSE file in the root directory of this source tree.
+"""
+
 import os
 import pydicom as dicom
 import numpy as np
 import sys
-import json
+import shutil
 import logging
 import argparse
 
@@ -11,7 +18,7 @@ from tqdm import tqdm
 from pydicom.errors import InvalidDicomError
 from pathlib import Path
 
-from manet.sys.io import dump_json
+from fexp.utils.io import write_json
 
 
 logger = logging.getLogger('mammo_importer')
@@ -139,6 +146,10 @@ def find_mammograms(dicoms):
 
 def make_patient_mapping(patient_ids, encoding='10'):
     patient_ids = set(patient_ids)  # Remove duplicates
+    if not Path('NKI_mapping.dat').exists():
+        logger.info('NKI_mapping.dat does not exist! Creating.')
+        os.mknod('NKI_mapping.dat')
+
     with open('NKI_mapping.dat', 'r') as f:
         content = f.readlines()
     mapping = {k: v for k, v in [_.strip().split(' ') for _ in content if _.strip() != '']}
@@ -203,7 +214,7 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
     return uid_mapping
 
 
-def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path):
+def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, create_links=True):
     output = defaultdict(list)
     labels_found = []
 
@@ -220,17 +231,25 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         # Also copy over labels
         label_path = Path(str(fn).replace('.dcm', '-label.nrrd'))
         # TODO: Find labels with other name and log this
+
         if label_path.exists():
             logger.info(f'Linking label {label_path}')
             try:
-                os.symlink(label_path, f / Path(label_path.name))
+                if create_links:
+                    os.symlink(label_path, f / Path(label_path.name))
+                else:
+                    shutil.copy(label_path, f / Path(label_path.name))
+
             except FileExistsError as e:
                 logger.info(f'Label {label_path} exists.')
             label = str(f / Path(label_path.name))
             labels_found.append(label)
 
         try:
-            os.symlink(fn, new_fn)
+            if create_links:
+                os.symlink(fn, new_fn)
+            else:
+                shutil.copy(fn, new_fn)
 
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')
@@ -256,9 +275,9 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
 def main():
     parser = argparse.ArgumentParser(description='Process dataset into convenient format.')
-    parser.add_argument('--path', type=Path, default='/data/archives/DCIS/', help='Path to dataset')
-    parser.add_argument('--dest', type=Path, default='/home/jonas/DCIS/',
-                        help='Destination directory')
+    parser.add_argument('path', type=Path, help='Path to dataset')
+    parser.add_argument('dest', type=Path, help='Destination directory')
+    parser.add_argument('--copy-data', action='store_true', help='Copy data instead of symlinking.')
     args = parser.parse_args()
 
     dicoms = find_dicoms(args.path)
@@ -271,10 +290,12 @@ def main():
     patient_mapping = make_patient_mapping(patient_ids)
 
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
-    new_mammograms = create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, args.dest)
+    logging.info('Writing new directory structure. This can take a while.')
+    new_mammograms = create_temporary_file_structure(
+        mammograms, patient_mapping, uid_mapping, args.dest, create_links=not args.copy_data)
 
-    dump_json('mammograms_imported.json', new_mammograms)
-    write_list(new_mammograms.keys(), 'imported_studies.log')
+    write_json(args.dest / 'dataset_description.json', new_mammograms)
+    write_list(new_mammograms.keys(), args.dest / 'imported_studies.log')
 
 
 if __name__ == '__main__':

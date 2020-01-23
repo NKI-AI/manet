@@ -100,26 +100,27 @@ class CropAroundBbox(object):
 
     def __call__(self, sample):
         bbox = BoundingBox(sample['bbox'])
+
         effective_output_size = self.output_size[-bbox.ndim:]
         if np.all(bbox.size <= effective_output_size):
             # A center crop is fine.
-            new_bbox = bbox.bounding_box_around_center(effective_output_size)
+            new_bbox = bbox.bounding_box_around_center(effective_output_size).astype(int)
         else:
             starting_point = bbox.coordinates
             delta = np.clip(effective_output_size - bbox.size, 0, bbox.size.max()) // 2
             jitter = np.random.randint(-delta, delta + 1)
             # Here it makes sense to overwrite the add operator of bounding box
-            new_bbox = BoundingBox(combine_bbox(starting_point - jitter, effective_output_size))
+            new_bbox = BoundingBox(combine_bbox(starting_point - jitter, effective_output_size), dtype=int)
 
         # del sample['bbox']
         # TODO: Extra dimension is not always needed.
 
         try:
             sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
-        except Exception as e:
-            print(sample['image'].shape, bbox, new_bbox, new_bbox.squeeze(0))
-            import sys
-            sys.exit()
+        except ValueError as e:
+            print(new_bbox.squeeze(0), new_bbox, sample['image'].shape)
+            raise ValueError(e)
+
         sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
 
         return sample

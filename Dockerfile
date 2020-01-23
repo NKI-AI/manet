@@ -39,8 +39,8 @@ RUN pip install tb-nightly yacs -q
 RUN pip install --upgrade pip
 RUN pip install pydicom -q
 RUN pip install future packaging pytest coverage coveralls easydict tifffile demandimport simpleitk -q
-RUN python --version
-RUN pip list
+RUN pip install git+https://github.com/AIIMLab/fexp
+
 
 WORKDIR /tmp
 RUN git clone https://github.com/NVIDIA/apex
@@ -50,6 +50,7 @@ RUN pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="-
 # Create directories for input and output
 RUN mkdir /manet && chmod 777 /manet
 
+ENV PYTHONPATH "/manet"
 WORKDIR /manet
 
 # Provide an open entrypoint for the docker

@@ -9,9 +9,10 @@ import logging
 import pathlib
 import hashlib
 import numpy as np
+import zlib
 
 from torch.utils.data import Dataset
-from manet.sys.io import read_json, dump_json
+from manet.sys.io import read_json, write_json, read_list, write_list
 from manet.utils.bbox import bounding_box
 from manet.utils.readers import read_image
 
@@ -41,17 +42,28 @@ class MammoDataset(Dataset):
         self._cache_valid = True
         self.validate_cache()  # Pass
 
+        # for path in self.dataset_description:
+        #     self.logger.debug(f'Parsing directory {path}.')
+        #     list_of_images = self.dataset_description[path]
+        #     for image in list_of_images:
+        #         curr_data_dict = {'case_path': path}
+
         for path in self.dataset_description:
             self.logger.debug(f'Parsing directory {path}.')
-            curr_data_dict = {'case_path': path}
             for image_dict in self.dataset_description[path]:
-                curr_data_dict['image_fn'] = pathlib.Path(image_dict['filename'])
+                curr_data_dict = {'case_path': path, 'image_fn': pathlib.Path(image_dict['filename'])}
                 if self.filter_negatives and 'label' in image_dict:
                     label_fn = pathlib.Path(image_dict['label'])
-                    if self.use_bounding_boxes:
-                        bbox = self.compute_bounding_box(label_fn)
                     curr_data_dict['label_fn'] = label_fn
-                    curr_data_dict['bbox'] = bbox
+
+                    if self.use_bounding_boxes:
+                        try:
+                            bbox = self.compute_bounding_box(label_fn)
+                            curr_data_dict['bbox'] = bbox
+                        except IndexError:
+                            self.logger.error(f'Cannot compute bounding box of {label_fn}.')
+                            continue
+
                     self.data.append(curr_data_dict)
                 else:
                     NotImplementedError()
@@ -62,20 +74,38 @@ class MammoDataset(Dataset):
         self.logger.debug(f'Computing bounding box for {label_fn}.')
         # TODO: Better building of cache names.
         bbox_cache = self.cache_dir / hashlib.sha224(str(label_fn).encode()).hexdigest()
-        if bbox_cache.exists():
+        if bbox_cache.exists() and self._cache_valid:
             bbox = read_json(bbox_cache)[str(label_fn)]
 
         else:
             label_arr = read_image(self.data_root / label_fn, force_2d=True, no_metadata=True)
             bbox = bounding_box(label_arr)
-            dump_json(bbox_cache, {str(label_fn): bbox})
+            write_json(bbox_cache, {str(label_fn): bbox.bbox.tolist()})
 
-        return bbox
+        # Classes cannot be collated in the standard pytorch collate function.
+        return list(bbox)
 
     def validate_cache(self):
-        # This function could be used to cache things like images, etc.
-        # Right now it is a dummy function.
-        self._cache_valid = True
+        # This function checks if the dataset description has changed, if so, the whole cache is invalidated.
+        # Maybe this is a bit too strict, but this can be improved in future versions.
+        cache_checksum = self.cache_dir / 'cache_checksum'
+        current_checksum = self.__description_checksum()
+        if not cache_checksum.exists():
+            self._cache_valid = False
+            write_list(cache_checksum, [current_checksum])
+        else:
+            checksum = read_list(cache_checksum)[0]
+            self._cache_valid = True if current_checksum == checksum else False
+
+    def __description_checksum(self):
+        # https://stackoverflow.com/a/42148379
+        checksum = 0
+        for item in self.dataset_description.items():
+            c1 = 1
+            for _ in item:
+                c1 = zlib.adler32(bytes(repr(_), 'utf-8'), c1)
+            checksum = checksum ^ c1
+        return checksum
 
     def __getitem__(self, idx):
         data_dict = self.data[idx]
@@ -90,7 +120,13 @@ class MammoDataset(Dataset):
         image = read_image(image_fn, force_2d=True, no_metadata=True, dtype=np.float32)[np.newaxis, ...]
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)
 
-        sample = {'image': image, 'mask': mask, 'bbox': bbox}
+        sample = {
+            'image': image,
+            'mask': mask,
+            'bbox': bbox,
+            'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
+            'label_fn': str(label_fn),
+        }
 
         if self.transform:
             sample = self.transform(sample)
