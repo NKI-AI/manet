@@ -29,11 +29,11 @@ def clip_and_scale(
     ----------
     arr : array_like
     clip_range : tuple
-        Range to clip input array to
+        Range to clip input array to.
     source_interval : tuple
        If given, this denote the original minimal and maximal values.
     target_interval : tuple
-        Interval to map input values to
+        Interval to map input values to.
 
     Returns
     -------

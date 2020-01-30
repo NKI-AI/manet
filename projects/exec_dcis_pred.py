@@ -47,7 +47,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = torch.nn.NLLLoss(weight=None, reduction='mean')
+    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
@@ -75,9 +75,9 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
-
         train_loss = torch.tensor(0.).to(args.device)
-        output = F.log_softmax(model(images), 1)
+        output = model(images)
+
         train_loss += loss_fn(output, masks)
 
         # Backprop the loss, use APEX if necessary
@@ -139,31 +139,32 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     # loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK, reduce=False),
     #            'topkbce': TopkBCELogits(top_k=cfg.TOPK, reduce=False)}[cfg.LOSS]
 
-    loss_fn = torch.nn.NLLLoss(weight=None, reduction='mean')
+    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True)
 
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
             image = batch['image'].to(args.device)
             mask = batch['mask'].to(args.device)
-            output = F.log_softmax(model(image), 1)
+            output = model(image)
+            output_softmax = F.softmax(model(image), 1)
 
             if iter_idx < 1:
                 image_arr = image.detach().cpu().numpy()[0, 0, ...]
-                output_arr = output.detach().cpu().numpy()[0, 0, ...]
+                output_arr = output_softmax.detach().cpu().numpy()[0, 0, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
                 plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
-                plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, overlay=output_arr)))
+                plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=output_arr, overlay=output_arr)))
 
-                writer.add_image('image', plot_image, epoch, dataformats='HWC')
-                writer.add_image('heatmap', plot_heatmap, epoch, dataformats='HWC')
-                writer.add_image('overlay', plot_overlay, epoch, dataformats='HWC')
+                writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
+                writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
+                writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
             batch_loss = loss_fn(output, mask)
             losses.append(batch_loss.item())
 
-            batch_dice = dice_fn(output[0, 0, ...], mask)
+            batch_dice = dice_fn(output_softmax[0, 0, ...], mask)
             dices.append(batch_dice.item())
             del output
 
@@ -192,8 +193,7 @@ def build_model(device):
     #     domain_classifier=False, forward_domain_cls=False,
     #     bn_conv_order='brcbrc').to(device)
     model = UnetModel2d(
-        1, 2, (1024, 1024), 64,
-        4, 0.9).to(device)
+        1, 2, (1024, 1024), 64, 4, 0.9).to(device)
 
     return model
 

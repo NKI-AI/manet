@@ -11,7 +11,7 @@ __C.LOCAL = False
 __C.DEBUG = False
 
 # Directory setup
-__C.INPUT_DIR = '/input'
+__C.INPUT_DIR = '/experiments'
 __C.EXP_DIR = '/experiments'
 __C.DATA_SOURCE = '/mnt/synology/breast/archives/nikita/priors/'
 __C.LIST_DIR = '/mnt/synology/breast/archives/nikita/priors/'

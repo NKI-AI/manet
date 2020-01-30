@@ -19,7 +19,6 @@ from fexp.utils.bbox import crop_to_bbox, BoundingBox
 class Compose(object):
     """Compose several transforms together. For instance, normalization combined with a flip
     """
-
     def __init__(self, transforms):
         self.transforms = transforms
 

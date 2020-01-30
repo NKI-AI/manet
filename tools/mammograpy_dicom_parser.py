@@ -233,7 +233,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         # TODO: Find labels with other name and log this
 
         if label_path.exists():
-            logger.info(f'Linking label {label_path}')
+            logger.info(f'Linking / copying label {label_path}')
             try:
                 if create_links:
                     os.symlink(label_path, f / Path(label_path.name))
