@@ -7,7 +7,6 @@ LICENSE file in the root directory of this source tree.
 """
 import sys
 import os
-import matplotlib
 
 import numpy as np
 import logging
@@ -31,8 +30,12 @@ from manet.data.transforms import Compose, CropAroundBbox, ClipAndScale
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
-from manet.sys.io import link_data, read_list, read_json
 from manet.sys import multi_gpu
+from manet.utils.plotting import plot_2d
+
+import torch.nn.functional as F
+
+from fexp.utils.io import read_list, read_json
 
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
@@ -44,7 +47,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+    loss_fn = torch.nn.NLLLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
@@ -59,16 +62,22 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             logger.info(f"Mask filenames: {batch['label_fn']}")
             logger.info(f"BoundingBox: {batch['bbox']}")
 
-            image_grid = torchvision.utils.make_grid(images)
-            mask_grid = torchvision.utils.make_grid(masks)
+            image_arr = images.detach().cpu()[0, 0, ...]
+            masks_arr = masks.detach().cpu()[0, ...]
 
-            writer.add_image('images', image_grid, 0)
-            writer.add_image('masks', mask_grid, 0)
-            # writer.add_graph(model, images.detach())
+            # image_grid = torchvision.utils.make_grid(images)
+            # mask_grid = torchvision.utils.make_grid(masks)
+
+            # writer.add_image('images', image_grid, 0)
+            # writer.add_image('masks', mask_grid, 0)
+            # writer.add_graph(model, images.detach().cpu())
+
+            plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
+            writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
+
 
         train_loss = torch.tensor(0.).to(args.device)
-        output = torch.squeeze(model(images), dim=1)
-
+        output = F.log_softmax(model(images), 1)
         train_loss += loss_fn(output, masks)
 
         # Backprop the loss, use APEX if necessary
@@ -130,20 +139,26 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     # loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK, reduce=False),
     #            'topkbce': TopkBCELogits(top_k=cfg.TOPK, reduce=False)}[cfg.LOSS]
 
-    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+    loss_fn = torch.nn.NLLLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True)
 
-    display_images = []
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
             image = batch['image'].to(args.device)
             mask = batch['mask'].to(args.device)
-            output = torch.squeeze(model(image), dim=1)
+            output = F.log_softmax(model(image), 1)
 
-            if iter_idx < 5:
-                image_arr = image.detach().cpu().numpy()
-                output_arr = output.detach().cpu().numpy()
+            if iter_idx < 1:
+                image_arr = image.detach().cpu().numpy()[0, 0, ...]
+                output_arr = output.detach().cpu().numpy()[0, 0, ...]
 
+                plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
+                plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
+                plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, overlay=output_arr)))
+
+                writer.add_image('image', plot_image, epoch, dataformats='HWC')
+                writer.add_image('heatmap', plot_heatmap, epoch, dataformats='HWC')
+                writer.add_image('overlay', plot_overlay, epoch, dataformats='HWC')
 
             batch_loss = loss_fn(output, mask)
             losses.append(batch_loss.item())
@@ -161,8 +176,6 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     if args.local_rank == 0:
         for key in metric_dict:
             writer.add_scalar(key, metric_dict[key].item(), epoch)
-
-
 
     torch.cuda.empty_cache()
     if return_losses:

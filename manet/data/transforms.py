@@ -8,9 +8,11 @@ LICENSE file in the root directory of this source tree.
 import numpy as np
 import cv2
 from skimage.transform import rescale, rotate
-from manet.utils.bbox import crop_to_bbox, combine_bbox, BoundingBox
 from manet.utils.image import clip_and_scale
 from config.base_config import cfg
+from manet.utils.bbox import combine_bbox
+
+from fexp.utils.bbox import crop_to_bbox, BoundingBox
 
 
 # TODO: fexp

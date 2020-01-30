@@ -11,24 +11,23 @@ from skimage.feature.peak import peak_local_max
 from skimage.measure import find_contours
 from skimage.morphology import disk, closing
 from matplotlib.ticker import NullLocator
-from matplotlib.transforms import Bbox
 import matplotlib.patches as mpatches
 import numpy.ma as ma
+import io
+import PIL
 
 
-def plot_2d(image, height=16, dpi=None, mask=None, bboxes=None,
+def plot_2d(image, mask=None, bboxes=None,
             overlay=None, linewidth=2, mask_color='r', bbox_color='b',
             overlay_cmap='jet', overlay_threshold=0.1, overlay_alpha=0.1,
             overlay_local_max_min_distance=75, overlay_local_max_color='r',
-            overlay_contour_color='g', save_as=None):
+            overlay_contour_color='g'):
     """
     Plot image with contours
 
     Parameters
     ----------
     image
-    height
-    dpi
     mask
     bboxes
     overlay
@@ -41,18 +40,21 @@ def plot_2d(image, height=16, dpi=None, mask=None, bboxes=None,
     overlay_local_max_min_distance
     overlay_local_max_color
     overlay_contour_color
-    save_as
 
     Returns
     -------
+    PIL Image
 
-    BUG: Sometimes the output has a white edge to the left of the image.
     """
-    aspect = float(image.shape[1]) / image.shape[0]
-    fig, ax = plt.subplots(1, figsize=(aspect*height, height))
-    fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
-    cmap = None
+    dpi = 80
+    width = image.shape[1]
+    height = image.shape[0]
+    figsize = width / float(dpi), height / float(dpi)
 
+    fig, ax = plt.subplots(1, figsize=figsize)
+    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+
+    cmap = None
     if image.ndim == 3:
         if image.shape[-1] == 1:
             image = image[..., 0]
@@ -62,7 +64,8 @@ def plot_2d(image, height=16, dpi=None, mask=None, bboxes=None,
     if image.ndim == 2:
         cmap = 'gray'
 
-    ax.imshow(image, cmap=cmap, aspect='equal', extent=(0, image.shape[1], image.shape[0], 0))
+    ax.imshow(image, cmap=cmap, aspect='equal', extent=(0, width, height, 0))
+    ax.set_adjustable('datalim')
 
     if mask is not None:
         add_2d_contours(mask, ax, linewidth, mask_color)
@@ -76,14 +79,23 @@ def plot_2d(image, height=16, dpi=None, mask=None, bboxes=None,
                        alpha=overlay_alpha, contour_color=overlay_contour_color)
 
     if overlay is not None and overlay_local_max_min_distance:
-        add_local_maxima(overlay, ax, overlay_local_max_min_distance, overlay_threshold, overlay_local_max_color)
+        coordinates = peak_local_max(overlay, min_distance=overlay_local_max_min_distance,
+                                     threshold_abs=overlay_threshold)
+        ax.plot(coordinates[:, 1], coordinates[:, 0], overlay_local_max_color + '.', markersize=15, alpha=1)
 
-    if save_as:
-        fig.gca().set_axis_off()
-        fig.gca().xaxis.set_major_locator(NullLocator())
-        fig.gca().yaxis.set_major_locator(NullLocator())
-        fig.savefig(save_as, bbox_inches=Bbox([[0, 0], [aspect*height, height]]), pad_inches=0, dpi=dpi)
-        plt.close()
+    fig.gca().set_axis_off()
+    fig.gca().xaxis.set_major_locator(NullLocator())
+    fig.gca().yaxis.set_major_locator(NullLocator())
+
+    buffer = io.BytesIO()
+
+    fig.savefig(buffer, pad_inches=0, dpi=dpi)
+    buffer.seek(0)
+    plt.close()
+
+    pil_image = PIL.Image.open(buffer)
+
+    return pil_image
 
 
 def add_2d_bbox(bbox, ax, linewidth=0.5, color='b'):
@@ -156,8 +168,3 @@ def add_2d_overlay(overlay, ax, linewidth, threshold=0.1, cmap='jet', alpha=0.1,
         mask[mask < threshold] = 0
         mask[mask >= threshold] = 1
         add_2d_contours(mask, ax, linewidth=linewidth, color=contour_color)
-
-
-def add_local_maxima(overlay, ax, min_distance, threshold, overlay_color='r'):
-    coordinates = peak_local_max(overlay, min_distance=min_distance, threshold=threshold)
-    ax.plot(coordinates[:, 1], coordinates[:, 0], overlay_color + '.', markersize=15, alpha=1)
