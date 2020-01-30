@@ -104,7 +104,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        train_dice = dice_fn(output[0, 0, ...], masks)
+        train_dice = dice_fn(F.softmax(output)[0, 1, ...], masks)
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}
@@ -155,7 +155,9 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
                 plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
-                plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=output_arr, overlay=output_arr)))
+                plot_overlay = torch.from_numpy(
+                    np.array(plot_2d(
+                        image_arr, mask=output_arr, overlay=output_arr, overlay_threshold=0.5, overlay_alpha=0.5)))
 
                 writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
@@ -164,7 +166,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             batch_loss = loss_fn(output, mask)
             losses.append(batch_loss.item())
 
-            batch_dice = dice_fn(output_softmax[0, 0, ...], mask)
+            batch_dice = dice_fn(output_softmax[0, 1, ...], mask)
             dices.append(batch_dice.item())
             del output
 
@@ -193,7 +195,7 @@ def build_model(device):
     #     domain_classifier=False, forward_domain_cls=False,
     #     bn_conv_order='brcbrc').to(device)
     model = UnetModel2d(
-        1, 2, (1024, 1024), 64, 4, 0.9).to(device)
+        1, 2, (1024, 1024), 64, 4, 0.1).to(device)
 
     return model
 
@@ -286,9 +288,9 @@ def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
 
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
-    print('Run name {}'.format(args.name))
-    print('Local rank {}'.format(args.local_rank))
-    print('Loading config file {}'.format(args.cfg))
+    print(f'Run name {args.name}')
+    print(f'Local rank {args.local_rank}')
+    print(f'Loading config file {args.cfg}')
     cfg_from_file(args.cfg)
     exp_path = os.path.join(cfg.EXP_DIR, args.name)
     if args.local_rank == 0:
@@ -300,7 +302,7 @@ def main(args):
     else:
         time.sleep(1)
         writer = None
-    log_name = args.name + '_{}.log'.format(args.local_rank)
+    log_name = args.name + f'_{args.local_rank}.log'
     print('Logging into {}'.format(os.path.join(exp_path, log_name)))
     setup(filename=os.path.join(exp_path, log_name), redirect_stderr=False, redirect_stdout=False,
           log_level=logging.INFO if not args.debug else logging.DEBUG)
