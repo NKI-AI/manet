@@ -151,7 +151,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
             if iter_idx < 1:
                 image_arr = image.detach().cpu().numpy()[0, 0, ...]
-                output_arr = output_softmax.detach().cpu().numpy()[0, 0, ...]
+                output_arr = output_softmax.detach().cpu().numpy()[0, 1, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
                 plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
