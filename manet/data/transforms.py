@@ -149,7 +149,7 @@ class RandomFlipTransform(object):
         self.probability = probability
 
     def __call__(self, sample):
-        if not np.random.random_sample() < probability:
+        if not np.random.random_sample() < self.probability:
             return sample
 
         sample['image'] = np.flip(sample['image'], axis=self.axis)
