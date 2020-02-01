@@ -20,7 +20,7 @@ import PIL
 def plot_2d(image, mask=None, bboxes=None,
             overlay=None, linewidth=2, mask_color='r', bbox_color='b',
             overlay_cmap='jet', overlay_threshold=0.1, overlay_alpha=0.1,
-            overlay_local_max_min_distance=75, overlay_local_max_color='r',
+            overlay_local_max_min_distance=None, overlay_local_max_color='r',
             overlay_contour_color='g'):
     """
     Plot image with contours

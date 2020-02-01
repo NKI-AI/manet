@@ -119,10 +119,42 @@ class CropAroundBbox(object):
         try:
             sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
         except ValueError as e:
-            print(new_bbox.squeeze(0), new_bbox, sample['image'].shape)
+            print(new_bbox.squeeze(0), new_bbox, sample['image'].shape, sample['image_fn'])
             raise ValueError(e)
 
-        sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
+        if 'mask' in sample:
+            sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
+
+        return sample
+
+
+class RandomShiftBbox(object):
+    def __init__(self, max_shift=None):
+        self.max_shift = max_shift
+
+    def __call__(self, sample):
+        # TODO: fexp, if is already BoundingBox, casting is not needed.
+        bbox = BoundingBox(sample['bbox'])
+        shift = np.random.randint(-self.max_shift, self.max_shift)
+        new_bbox = bbox.shift_around_center(shift)
+        sample['bbox'] = new_bbox
+
+        return sample
+
+
+class RandomFlipTransform(object):
+    def __init__(self, probability):
+        self.mask = True
+        self.axis = -1
+        self.probability = probability
+
+    def __call__(self, sample):
+        if not np.random.random_sample() < probability:
+            return sample
+
+        sample['image'] = np.flip(sample['image'], axis=self.axis)
+        if 'mask' in sample:
+            sample['mask'] = np.flip(sample['mask'], axis=self.axis)
 
         return sample
 
@@ -146,20 +178,6 @@ class RandomGaussianNoise(object):
     def apply(self, x):
         return x * (1.0 + np.random.randn(*x.shape).astype(np.float32) * self.std)
 
-
-class RandomShiftTransform(object):
-    def __init__(self, **kwargs):
-        self.mask = True
-        delta = kwargs.get('delta', 32)
-        dim = kwargs.get('dim', 3)
-        ignore_dim = kwargs.get('ignore_dim', 0)
-        self.delta = np.random.randint(1 - delta, high=delta, size=dim)
-        if ignore_dim is not None:
-            self.delta[ignore_dim] = 0
-
-    def apply(self, x):
-        bbox = combine_bbox(self.delta, x.shape)
-        return crop_to_bbox(x, bbox)
 
 
 class RandomZoomTransform(object):
@@ -233,17 +251,7 @@ class RandomElasticTransform(object):
             return np.stack(np.rint(out_stack), axis=0).astype(x.dtype)
 
 
-class RandomFlipTransform(object):
-    def __init__(self):
-        self.mask = True
-        self.axis = -1
-        self.do_flip = (np.random.random_sample() < 0.5)
 
-    def apply(self, x):
-        if self.do_flip:
-            return np.flip(x, axis=self.axis)
-        else:
-            return x
 
 
 class RandomFlipTransformExt(object):

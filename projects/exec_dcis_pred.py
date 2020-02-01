@@ -26,7 +26,7 @@ from manet.nn.training.optim import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
-from manet.data.transforms import Compose, CropAroundBbox, ClipAndScale
+from manet.data.transforms import Compose, CropAroundBbox, RandomShiftBbox, RandomFlipTransform, ClipAndScale
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
@@ -150,6 +150,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             output_softmax = F.softmax(model(image), 1)
 
             if iter_idx < 1:
+                # TODO: Multiple images, using a gridding function.
                 image_arr = image.detach().cpu().numpy()[0, 0, ...]
                 output_arr = output_softmax.detach().cpu().numpy()[0, 1, ...]
 
@@ -213,11 +214,18 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     # Build datasets
     train_transforms = Compose([
         ClipAndScale(None, None, [0, 1]),
+        RandomFlipTransform(0.5),
+        RandomShiftBbox(100),
+        CropAroundBbox((1, 1024, 1024))
+    ])
+
+    validation_transforms = Compose([
+        ClipAndScale(None, None, [0, 1]),
         CropAroundBbox((1, 1024, 1024))
     ])
 
     train_set = MammoDataset(training_description, data_source, transform=train_transforms)
-    validation_set = MammoDataset(validation_description, data_source, transform=train_transforms)
+    validation_set = MammoDataset(validation_description, data_source, transform=validation_transforms)
     logger.info(f'Train dataset size: {len(train_set)}. '
                 f'Validation data size: {len(validation_set)}.')
 
