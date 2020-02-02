@@ -215,7 +215,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     train_transforms = Compose([
         ClipAndScale(None, None, [0, 1]),
         RandomFlipTransform(0.5),
-        RandomShiftBbox(100),
+        RandomShiftBbox([100, 100]),
         CropAroundBbox((1, 1024, 1024))
     ])
 

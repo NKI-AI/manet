@@ -130,7 +130,7 @@ class CropAroundBbox(object):
 
 class RandomShiftBbox(object):
     def __init__(self, max_shift=None):
-        self.max_shift = max_shift
+        self.max_shift = np.asarray(max_shift)
 
     def __call__(self, sample):
         # TODO: fexp, if is already BoundingBox, casting is not needed.
