@@ -136,9 +136,8 @@ class RandomShiftBbox(object):
         # TODO: fexp, if is already BoundingBox, casting is not needed.
         bbox = BoundingBox(sample['bbox'])
         shift = np.random.randint(-self.max_shift, self.max_shift)
-        new_bbox = bbox.shift_around_center(shift)
+        new_bbox = bbox + shift
         sample['bbox'] = new_bbox
-
         return sample
 
 
