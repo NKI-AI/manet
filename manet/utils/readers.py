@@ -18,6 +18,10 @@ _DICOM_VOI_LUT_FUNCTION = '0028|1056'
 _DICOM_WINDOW_CENTER_TAG = '0028|1050'
 _DICOM_WINDOW_WIDTH_TAG = '0028|1051'
 _DICOM_WINDOW_CENTER_WIDTH_EXPLANATION_TAG = '0028|1055'
+_DICOM_FIELD_OF_VIEW_HORIZONTAL_FLIP = '0018|7034'
+_DICOM_PATIENT_ORIENTATION = '0020|0020'
+_DICOM_LATERALITY = '0020|0060'
+_DICOM_IMAGE_LATERALITY = '0020|0062'
 
 
 # https://github.com/SimpleITK/SlicerSimpleFilters/blob/master/SimpleFilters/SimpleFilters.py
@@ -34,89 +38,36 @@ _SITK_INTERPOLATOR_DICT = {
 }
 
 
-def resample_sitk_image(sitk_image, spacing=None, interpolator=None,
-                        fill_value=0):
-    """Resamples an ITK image to a new grid. If no spacing is given,
-    the resampling is done isotropically to the smallest value in the current
-    spacing. This is usually the in-plane resolution. If not given, the
-    interpolation is derived from the input data type. Binary input
-    (e.g., masks) are resampled with nearest neighbors, otherwise linear
-    interpolation is chosen.
+def read_image_as_sitk_image(filename):
+    """
+    Read file as a SimpleITK image trying to parse the error.
+
     Parameters
     ----------
-    sitk_image : SimpleITK image or str
-      Either a SimpleITK image or a path to a SimpleITK readable file.
-    spacing : tuple
-      Tuple of integers
-    interpolator : str
-      Either `nearest`, `linear` or None.
-    fill_value : int
+    filename : Path or str
+
     Returns
     -------
     SimpleITK image.
     """
-    if isinstance(sitk_image, str):
-        sitk_image = sitk.ReadImage(sitk_image)
-    num_dim = sitk_image.GetDimension()
-    if not interpolator:
-        interpolator = 'linear'
-        pixelid = sitk_image.GetPixelIDValue()
+    try:
+        sitk_image = sitk.ReadImage(str(filename))
+    except RuntimeError as error:
+        if 'itk::ERROR' in str(error):
+            error = str(error).split('itk::ERROR')[-1]
 
-        if pixelid not in [1, 2, 4]:
-            raise NotImplementedError(
-                'Set `interpolator` manually, '
-                'can only infer for 8-bit unsigned or 16, 32-bit signed integers')
-        if pixelid == 1: #  8-bit unsigned int
-            interpolator = 'nearest'
+        raise RuntimeError(error)
 
-    orig_pixelid = sitk_image.GetPixelIDValue()
-    orig_origin = sitk_image.GetOrigin()
-    orig_direction = sitk_image.GetDirection()
-    orig_spacing = np.array(sitk_image.GetSpacing())
-    orig_size = np.array(sitk_image.GetSize(), dtype=np.int)
-
-    if not spacing:
-        min_spacing = orig_spacing.min()
-        new_spacing = [min_spacing]*num_dim
-    else:
-        new_spacing = [float(s) if s else orig_spacing[idx] for idx, s in enumerate(spacing)]
-
-    assert interpolator in _SITK_INTERPOLATOR_DICT.keys(),\
-        '`interpolator` should be one of {}'.format(_SITK_INTERPOLATOR_DICT.keys())
-
-    sitk_interpolator = _SITK_INTERPOLATOR_DICT[interpolator]
-
-    new_size = orig_size*(orig_spacing/new_spacing)
-    new_size = np.ceil(new_size).astype(np.int)  # Image dimensions are in integers
-    # SimpleITK expects lists, not ndarrays
-    new_size = [int(s) if spacing[idx] else int(orig_size[idx]) for idx, s in enumerate(new_size)]
-
-    resample_filter = sitk.ResampleImageFilter()
-    resampled_sitk_image = resample_filter.Execute(
-        sitk_image,
-        new_size,
-        sitk.Transform(),
-        sitk_interpolator,
-        orig_origin,
-        new_spacing,
-        orig_direction,
-        fill_value,
-        orig_pixelid
-    )
-
-    return resampled_sitk_image, orig_spacing
+    return sitk_image
 
 
-def read_image(filename, force_2d=False, dtype=None, no_metadata=False, **kwargs):
+def read_image(filename, dtype=None, no_metadata=False, **kwargs):
     """Read medical image
 
     Parameters
     ----------
     filename : Path, str
         Path to image, can be any SimpleITK supported filename
-    force_2d : bool
-        If the image is 2D it can happen the image is presented as 3D but with (height, width, 1),
-        this option reduces the image to 2D.
     dtype : dtype
         The requested dtype the output should be cast.
     no_metadata : bool
@@ -134,39 +85,36 @@ def read_image(filename, force_2d=False, dtype=None, no_metadata=False, **kwargs
     if new_spacing and np.all(np.asarray(new_spacing) <= 0):
         new_spacing = False
 
-    if os.path.splitext(filename)[-1].lower() == '.dcm':
-        # TODO merge read_dcm in this function
-        if new_spacing:
-            raise NotImplementedError()
-        image, metadata = read_dcm(filename, **kwargs)
-    else:
-        metadata = {}
-        sitk_image = sitk.ReadImage(str(filename))
-        orig_shape = sitk.GetArrayFromImage(sitk_image).shape
-        if new_spacing:
-            sitk_image, orig_spacing = resample_sitk_image(
-                sitk_image,
-                spacing=new_spacing,
-                interpolator=kwargs.get('interpolator', None),
-                fill_value=0
-            )
-            metadata.update(
-                {'orig_spacing': tuple(orig_spacing), 'orig_shape': orig_shape})
-        image = sitk.GetArrayFromImage(sitk_image)
-        if force_2d:
-            if image.ndim == 3 and image.shape[0] == 1:
-                image = image[0]
-            else:
-                raise ValueError('Can only force image to be 2D when the depth is 1.')
+    metadata = {}
+    sitk_image = read_image_as_sitk_image(filename)
 
-        metadata.update({
-            'filename': os.path.abspath(filename),
-            'depth': sitk_image.GetDepth(),
-            'spacing': sitk_image.GetSpacing(),
-            'shape': image.shape,
-            'origin': sitk_image.GetOrigin(),
-            'direction': sitk_image.GetDirection()
-        })
+    if os.path.splitext(filename)[-1].lower() == '.dcm' and kwargs.get('dicom_keys', None):
+        dicom_data = {}
+        metadata_keys = sitk_image.GetMetaDataKeys()
+        for v in kwargs['dicom_keys']:
+            dicom_data[v] = None if v not in metadata_keys else sitk_image.GetMetaData(v).strip()
+        metadata['dicom_tags'] = dicom_data
+
+    orig_shape = sitk.GetArrayFromImage(sitk_image).shape
+    if new_spacing:
+        sitk_image, orig_spacing = resample_sitk_image(
+            sitk_image,
+            spacing=new_spacing,
+            interpolator=kwargs.get('interpolator', None),
+            fill_value=0
+        )
+        metadata.update(
+            {'orig_spacing': tuple(orig_spacing), 'orig_shape': orig_shape})
+
+    image = sitk.GetArrayFromImage(sitk_image)
+
+    metadata.update({
+        'filename': os.path.abspath(filename),
+        'depth': sitk_image.GetDepth(),
+        'spacing': sitk_image.GetSpacing(),
+        'origin': sitk_image.GetOrigin(),
+        'direction': sitk_image.GetDirection()
+    })
 
     if dtype:
         image = image.astype(dtype)
@@ -245,95 +193,54 @@ def _apply_window_level(sitk_image, voi_lut_fn='LINEAR', out_range=[0, 255], whi
     return sitk_image
 
 
-def read_dcm(filename, window_leveling=False, dtype=None, **kwargs):
-    """Read single dicom files. Tries to apply VOILutFunction if available.
-    Check if the file is a mammogram or not.
+def read_mammogram(filename, dtype=np.int, extract_dicom_flip=True):
+    extra_tags = [_DICOM_MODALITY_TAG, _DICOM_VOI_LUT_FUNCTION,
+                  _DICOM_LATERALITY, _DICOM_IMAGE_LATERALITY]
+    if extract_dicom_flip:
+        extra_tags += [_DICOM_FIELD_OF_VIEW_HORIZONTAL_FLIP, _DICOM_PATIENT_ORIENTATION]
 
-    Parameters
-    ----------
-    filename : str
-        Path to dicom file
-    window_leveling : bool
-        Whether to apply the window level settings.
-    dtype : dtype
-        The type the output should be cast.
+    image, metadata = read_image(filename, dicom_keys=extra_tags, dtype=dtype)
+    dicom_tags = metadata['dicom_tags']
 
-    Returns
-    -------
-    Image as ndarray and dictionary with metadata
+    modality = dicom_tags[_DICOM_MODALITY_TAG]
+    if not modality == 'MG':
+        raise ValueError(f'{filename} is not a mammogram. Wrong Modality in DICOM header.')
 
-    TODO: Rename to read_mammo and rebuild the read_dcm function.
-    TODO: Seperate function to only read the dicom header.
-    """
-    if not os.path.exists(filename):
-        raise IOError(f'{filename} does not exist.')
+    # TODO Check if this makes sense.
+    voi_lut_function = dicom_tags[_DICOM_VOI_LUT_FUNCTION] if dicom_tags[_DICOM_VOI_LUT_FUNCTION] else 'LINEAR'
+    if voi_lut_function != 'LINEAR':
+        raise NotImplementedError(f'VOI LUT Function {voi_lut_function} is not implemented.')
 
-    if not os.path.splitext(str(filename))[1] == '.dcm':
-        raise ValueError(f'{filename} should have .dcm as an extension')
+    if not metadata['depth'] == 1:
+        raise ValueError(f'First dimension of mammogram should be one.')
 
-    # SimpleITK has issues with unicode string names.
-    sitk_image = sitk.ReadImage(str(filename))
-    try:
-        modality = sitk_image.GetMetaData(_DICOM_MODALITY_TAG).strip()
-    except RuntimeError as e:  # The key probably does not exist
-        modality = None
-        raise ValueError(f'Modality tag {_DICOM_MODALITY_TAG} does not exist: {f}')
+    # Remove the depth dimension
+    image = image.reshape(list(image.shape)[1:])
 
-    try:
-        voi_lut_func = sitk_image.GetMetaData(
-            _DICOM_VOI_LUT_FUNCTION).strip()
-        if voi_lut_func == '':
-            voi_lut_func = 'LINEAR'
-    except RuntimeError:
-        voi_lut_func = 'LINEAR'
+    laterality = dicom_tags[_DICOM_LATERALITY] or dicom_tags[_DICOM_IMAGE_LATERALITY]
+    metadata['laterality'] = laterality
 
-    # Check if kwargs contains extra dicom tags
-    dicom_keys = kwargs.get('dicom_keys', None)
-    extra_metadata = {}
-    if dicom_keys:
-        metadata_keys = sitk_image.GetMetaDataKeys()
-        for k, v in dicom_keys:
-            # VOILUTFunction if missing should be interpreted as 'IDENTITY'
-            # per http://dicom.nema.org/medical/dicom/2017a/output/chtml/part03/sect_C.11.2.html
-            if v == '0028|1056' and v not in metadata_keys:  # VOILUTFunction:
-                extra_metadata[k] = 'IDENTITY'
-            else:
-                extra_metadata[k] = None if v not in metadata_keys else sitk_image.GetMetaData(v).strip()
+    # Sometimes a horizontal flip is required:
+    # https://groups.google.com/forum/#!msg/comp.protocols.dicom/X4ddGYiQOzs/g04EDChOQBwJ
+    if extract_dicom_flip:
+        needs_horizontal_flip = dicom_tags[_DICOM_FIELD_OF_VIEW_HORIZONTAL_FLIP] == 'YES'
+        if laterality:
+            # Check patient position
+            orientation = dicom_tags[_DICOM_PATIENT_ORIENTATION].split('\\')[0]
+            if (laterality == 'L' and orientation == 'P') or (laterality == 'R' and orientation == 'A'):
+                needs_horizontal_flip = True
 
-    # This needs to be done after reading all tags.
-    # The DICOM tags are lost after this operation.
-    if window_leveling:
-        try:
-            sitk_image = _apply_window_level(sitk_image, voi_lut_func)
-        except RuntimeError as e:
-            raise RuntimeError(f'{filename}: {e}')
+        if needs_horizontal_flip:
+            image = np.ascontiguousarray(np.fliplr(image))
 
-    data = sitk.GetArrayFromImage(sitk_image)
-    if dtype:
-        data = data.astype(dtype)
+    del metadata['dicom_tags']
+    del metadata['depth']
+    del metadata['direction']
+    del metadata['origin']
 
-    metadata = {}
-    metadata.update(extra_metadata)
-    metadata['filename'] = os.path.abspath(filename)
-    metadata['depth'] = sitk_image.GetDepth()
-    metadata['modality'] = 'n/a' if not modality else modality
-    metadata['spacing'] = sitk_image.GetSpacing()
-    metadata['origin'] = sitk_image.GetOrigin()
-    metadata['direction'] = sitk_image.GetDirection()
-    metadata['shape'] = data.shape
+    metadata['spacing'] = metadata['spacing'][:-1]
 
-    if modality == 'MG':
-        # If modality is MG the image can be a DBT image.
-        # If the image is true mammogram, we reshape.
-        if metadata['depth'] == 1:
-            del metadata['depth']
-            data = data[0]
-            metadata['spacing'] = metadata['spacing'][:-1]
-            metadata['shape'] = metadata['shape'][1:]
-    else:
-        raise NotImplementedError(f'{filename}: Modality {modality} not implemented.')
-
-    return data, metadata
+    return image, metadata
 
 
 def read_dcm_series(path, series_id=None, filenames=False, return_sitk=False):
@@ -406,3 +313,76 @@ def read_dcm_series(path, series_id=None, filenames=False, return_sitk=False):
         return data, sitk_image, metadata
 
     return data, metadata
+
+
+def resample_sitk_image(sitk_image, spacing=None, interpolator=None,
+                        fill_value=0):
+    """Resamples an ITK image to a new grid. If no spacing is given,
+    the resampling is done isotropically to the smallest value in the current
+    spacing. This is usually the in-plane resolution. If not given, the
+    interpolation is derived from the input data type. Binary input
+    (e.g., masks) are resampled with nearest neighbors, otherwise linear
+    interpolation is chosen.
+    Parameters
+    ----------
+    sitk_image : SimpleITK image or str
+      Either a SimpleITK image or a path to a SimpleITK readable file.
+    spacing : tuple
+      Tuple of integers
+    interpolator : str
+      Either `nearest`, `linear` or None.
+    fill_value : int
+    Returns
+    -------
+    SimpleITK image.
+    """
+    if isinstance(sitk_image, str):
+        sitk_image = sitk.ReadImage(sitk_image)
+    num_dim = sitk_image.GetDimension()
+    if not interpolator:
+        interpolator = 'linear'
+        pixelid = sitk_image.GetPixelIDValue()
+
+        if pixelid not in [1, 2, 4]:
+            raise NotImplementedError(
+                'Set `interpolator` manually, '
+                'can only infer for 8-bit unsigned or 16, 32-bit signed integers')
+        if pixelid == 1: #  8-bit unsigned int
+            interpolator = 'nearest'
+
+    orig_pixelid = sitk_image.GetPixelIDValue()
+    orig_origin = sitk_image.GetOrigin()
+    orig_direction = sitk_image.GetDirection()
+    orig_spacing = np.array(sitk_image.GetSpacing())
+    orig_size = np.array(sitk_image.GetSize(), dtype=np.int)
+
+    if not spacing:
+        min_spacing = orig_spacing.min()
+        new_spacing = [min_spacing]*num_dim
+    else:
+        new_spacing = [float(s) if s else orig_spacing[idx] for idx, s in enumerate(spacing)]
+
+    assert interpolator in _SITK_INTERPOLATOR_DICT.keys(),\
+        '`interpolator` should be one of {}'.format(_SITK_INTERPOLATOR_DICT.keys())
+
+    sitk_interpolator = _SITK_INTERPOLATOR_DICT[interpolator]
+
+    new_size = orig_size*(orig_spacing/new_spacing)
+    new_size = np.ceil(new_size).astype(np.int)  # Image dimensions are in integers
+    # SimpleITK expects lists, not ndarrays
+    new_size = [int(s) if spacing[idx] else int(orig_size[idx]) for idx, s in enumerate(new_size)]
+
+    resample_filter = sitk.ResampleImageFilter()
+    resampled_sitk_image = resample_filter.Execute(
+        sitk_image,
+        new_size,
+        sitk.Transform(),
+        sitk_interpolator,
+        orig_origin,
+        new_spacing,
+        orig_direction,
+        fill_value,
+        orig_pixelid
+    )
+
+    return resampled_sitk_image, orig_spacing
