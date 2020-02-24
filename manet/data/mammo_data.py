@@ -12,7 +12,7 @@ import numpy as np
 import zlib
 
 from torch.utils.data import Dataset
-from manet.utils.readers import read_image
+from fexp.readers import read_image
 
 from fexp.utils.bbox import bounding_box
 from fexp.utils.io import read_json, write_json, read_list, write_list

@@ -12,7 +12,6 @@ import numpy as np
 import logging
 import time
 import torch
-import torchvision
 import apex
 
 from torch.utils.tensorboard import SummaryWriter
@@ -23,7 +22,7 @@ from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
 from manet.nn.common.tensor_ops import reduce_tensor_dict
 from manet.nn.training.optim import WarmupMultiStepLR, build_optim
-from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
+from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
 from manet.data.transforms import Compose, CropAroundBbox, RandomShiftBbox, RandomFlipTransform, ClipAndScale
@@ -31,7 +30,7 @@ from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
-from manet.utils.plotting import plot_2d
+from fexp.plotting import plot_2d
 
 import torch.nn.functional as F
 
