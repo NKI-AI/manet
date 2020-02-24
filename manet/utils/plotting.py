@@ -5,9 +5,10 @@ Copyright (c) Nikita Moriakov and Jonas Teuwen
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+import matplotlib
+matplotlib.use('agg')
 
 import matplotlib.pyplot as plt
-from skimage.feature.peak import peak_local_max
 from skimage.measure import find_contours
 from skimage.morphology import disk, closing
 from matplotlib.ticker import NullLocator
@@ -17,10 +18,9 @@ import io
 import PIL
 
 
-def plot_2d(image, mask=None, bboxes=None,
-            overlay=None, linewidth=2, mask_color='r', bbox_color='b',
+def plot_2d(image, mask=None, bboxes=None, points=None,
+            overlay=None, linewidth=2, mask_color='r', bbox_color='b', points_color='g',
             overlay_cmap='jet', overlay_threshold=0.1, overlay_alpha=0.1,
-            overlay_local_max_min_distance=None, overlay_local_max_color='r',
             overlay_contour_color='g'):
     """
     Plot image with contours
@@ -37,8 +37,6 @@ def plot_2d(image, mask=None, bboxes=None,
     overlay_cmap
     overlay_threshold
     overlay_alpha
-    overlay_local_max_min_distance
-    overlay_local_max_color
     overlay_contour_color
 
     Returns
@@ -46,7 +44,7 @@ def plot_2d(image, mask=None, bboxes=None,
     PIL Image
 
     """
-    dpi = 80
+    dpi = 100
     width = image.shape[1]
     height = image.shape[0]
     figsize = width / float(dpi), height / float(dpi)
@@ -78,10 +76,8 @@ def plot_2d(image, mask=None, bboxes=None,
         add_2d_overlay(overlay, ax, linewidth, threshold=overlay_threshold, cmap=overlay_cmap,
                        alpha=overlay_alpha, contour_color=overlay_contour_color)
 
-    if overlay is not None and overlay_local_max_min_distance:
-        coordinates = peak_local_max(overlay, min_distance=overlay_local_max_min_distance,
-                                     threshold_abs=overlay_threshold)
-        ax.plot(coordinates[:, 1], coordinates[:, 0], overlay_local_max_color + '.', markersize=15, alpha=1)
+    if points is not None:
+        ax.plot(points[:, 1], points[:, 0], points_color + '.', markersize=2, alpha=1)
 
     fig.gca().set_axis_off()
     fig.gca().xaxis.set_major_locator(NullLocator())
