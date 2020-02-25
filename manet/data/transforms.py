@@ -8,50 +8,10 @@ LICENSE file in the root directory of this source tree.
 import numpy as np
 import cv2
 from skimage.transform import rescale, rotate
-from manet.utils.image import clip_and_scale
 from config.base_config import cfg
 from manet.utils.bbox import combine_bbox
 
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
-
-
-# TODO: fexp
-class Compose(object):
-    """Compose several transforms together. For instance, normalization combined with a flip
-    """
-    def __init__(self, transforms):
-        self.transforms = transforms
-
-    def __call__(self, sample):
-        for transform in self.transforms:
-            sample = transform(sample)
-        return sample
-
-    def __repr__(self):
-        repr_string = self.__class__.__name__ + '('
-        for transform in self.transforms:
-            repr_string += '\n'
-            repr_string += f'    {transform}'
-        repr_string += '\n)'
-        return repr_string
-
-
-# TODO: fexp
-class ClipAndScale(object):
-    """Clip input array and rescale image data.
-    """
-
-    def __init__(self, clip_range, source_interval, target_interval):
-        self.clip_range = clip_range
-        self.source_interval = source_interval
-        self.target_interval = target_interval
-
-    def apply_transform(self, data):
-        return clip_and_scale(data, self.clip_range, self.source_interval, self.target_interval)
-
-    def __call__(self, sample):
-        sample['image'] = self.apply_transform(sample['image'])
-        return sample
 
 
 class RandomRotation(object):
