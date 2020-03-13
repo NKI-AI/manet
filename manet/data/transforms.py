@@ -8,50 +8,51 @@ LICENSE file in the root directory of this source tree.
 import numpy as np
 import cv2
 from skimage.transform import rescale, rotate
-from manet.utils.image import clip_and_scale
+#from manet.utils.image import clip_and_scale
 from config.base_config import cfg
 from manet.utils.bbox import combine_bbox
 
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
+import pdb
 
 
-# TODO: fexp
-class Compose(object):
-    """Compose several transforms together. For instance, normalization combined with a flip
-    """
-    def __init__(self, transforms):
-        self.transforms = transforms
-
-    def __call__(self, sample):
-        for transform in self.transforms:
-            sample = transform(sample)
-        return sample
-
-    def __repr__(self):
-        repr_string = self.__class__.__name__ + '('
-        for transform in self.transforms:
-            repr_string += '\n'
-            repr_string += f'    {transform}'
-        repr_string += '\n)'
-        return repr_string
-
-
-# TODO: fexp
-class ClipAndScale(object):
-    """Clip input array and rescale image data.
-    """
-
-    def __init__(self, clip_range, source_interval, target_interval):
-        self.clip_range = clip_range
-        self.source_interval = source_interval
-        self.target_interval = target_interval
-
-    def apply_transform(self, data):
-        return clip_and_scale(data, self.clip_range, self.source_interval, self.target_interval)
-
-    def __call__(self, sample):
-        sample['image'] = self.apply_transform(sample['image'])
-        return sample
+#  TODO: fexp
+# class Compose(object):
+#     """Compose several transforms together. For instance, normalization combined with a flip
+#     """
+#     def __init__(self, transforms):
+#         self.transforms = transforms
+#
+#     def __call__(self, sample):
+#         for transform in self.transforms:
+#             sample = transform(sample)
+#         return sample
+#
+#     def __repr__(self):
+#         repr_string = self.__class__.__name__ + '('
+#         for transform in self.transforms:
+#             repr_string += '\n'
+#             repr_string += f'    {transform}'
+#         repr_string += '\n)'
+#         return repr_string
+#
+#
+#  TODO: fexp
+# class ClipAndScale(object):
+#     """Clip input array and rescale image data.
+#     """
+#
+#     def __init__(self, clip_range, source_interval, target_interval):
+#         self.clip_range = clip_range
+#         self.source_interval = source_interval
+#         self.target_interval = target_interval
+#
+#     def apply_transform(self, data):
+#         return clip_and_scale(data, self.clip_range, self.source_interval, self.target_interval)
+#
+#     def __call__(self, sample):
+#         sample['image'] = self.apply_transform(sample['image'])
+#         return sample
 
 
 class RandomRotation(object):
@@ -103,29 +104,42 @@ class CropAroundBbox(object):
         bbox = BoundingBox(sample['bbox'])
 
         effective_output_size = self.output_size[-bbox.ndim:]
-        if np.all(bbox.size <= effective_output_size):
-            # A center crop is fine.
-            new_bbox = bbox.bounding_box_around_center(effective_output_size).astype(int)
-        else:
-            starting_point = bbox.coordinates
-            delta = np.clip(effective_output_size - bbox.size, 0, bbox.size.max()) // 2
-            jitter = np.random.randint(-delta, delta + 1)
-            # Here it makes sense to overwrite the add operator of bounding box
-            new_bbox = BoundingBox(combine_bbox(starting_point - jitter, effective_output_size), dtype=int)
+        new_bbox = bbox.bounding_box_around_center(effective_output_size).astype(int)
 
-        # del sample['bbox']
-        # TODO: Extra dimension is not always needed.
-
-        try:
-            sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
-        except ValueError as e:
-            print(new_bbox.squeeze(0), new_bbox, sample['image'].shape)
-            raise ValueError(e)
-
+        sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
         sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
-
+        del sample['bbox']
         return sample
 
+
+class RandomShiftBbox(object):
+    def __init__(self, max_shift=None):
+        self.max_shift = np.asarray(max_shift)
+
+    def __call__(self, sample):
+        # TODO: fexp, if is already BoundingBox, casting is not needed.
+        bbox = BoundingBox(sample['bbox'])
+        shift = np.random.randint(-self.max_shift, self.max_shift)
+        new_bbox = (bbox + shift).astype(np.int)
+        sample['bbox'] = new_bbox
+        return sample
+
+
+class RandomFlipTransform(object):
+    def __init__(self, probability):
+        self.mask = True
+        self.axis = -1
+        self.probability = probability
+
+    def __call__(self, sample):
+        if not np.random.random_sample() < self.probability:
+            return sample
+
+        sample['image'] = np.flip(sample['image'], axis=self.axis)
+        if 'mask' in sample:
+            sample['mask'] = np.flip(sample['mask'], axis=self.axis)
+
+        return sample
 
 class RandomGammaTransform(object):
     def __init__(self, **kwargs):
@@ -231,20 +245,6 @@ class RandomElasticTransform(object):
                                        borderMode=cv2.BORDER_REFLECT_101, interpolation=cv2.INTER_LINEAR)*255.0 for i in
                              range(x.shape[0])]
             return np.stack(np.rint(out_stack), axis=0).astype(x.dtype)
-
-
-class RandomFlipTransform(object):
-    def __init__(self):
-        self.mask = True
-        self.axis = -1
-        self.do_flip = (np.random.random_sample() < 0.5)
-
-    def apply(self, x):
-        if self.do_flip:
-            return np.flip(x, axis=self.axis)
-        else:
-            return x
-
 
 class RandomFlipTransformExt(object):
     def __init__(self):

@@ -60,7 +60,6 @@ class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
             for base_lr in self.base_lrs
         ]
 
-
 # From https://github.com/Harshvardhan1/cyclic-learning-schedulers-pytorch/blob/master/cyclicLR.py
 class CyclicLinearLR(torch.optim.lr_scheduler._LRScheduler):
     r"""

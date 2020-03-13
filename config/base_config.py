@@ -11,10 +11,10 @@ __C.LOCAL = False
 __C.DEBUG = False
 
 # Directory setup
-__C.INPUT_DIR = '/experiments'
-__C.EXP_DIR = '/experiments'
-__C.DATA_SOURCE = '/mnt/synology/breast/archives/nikita/priors/'
-__C.LIST_DIR = '/mnt/synology/breast/archives/nikita/priors/'
+__C.INPUT_DIR = '../experiments'
+__C.EXP_DIR = '../experiments'
+__C.DATA_SOURCE = '../dataset/share'
+__C.LIST_DIR = '../dataset/share'
 
 # Multi-GPU/FP16 settings
 __C.APEX = -1  # -1 for APEX disabled, i >=0 for Oi optimization

@@ -7,12 +7,10 @@ LICENSE file in the root directory of this source tree.
 """
 import sys
 import os
-
 import numpy as np
 import logging
 import time
 import torch
-import torchvision
 import apex
 
 from torch.utils.tensorboard import SummaryWriter
@@ -23,10 +21,11 @@ from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
 from manet.nn.common.tensor_ops import reduce_tensor_dict
 from manet.nn.training.optim import WarmupMultiStepLR, build_optim
-from manet.nn.common.losses import TopkCrossEntropy, HardDice, TopkBCELogits
+from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
-from manet.data.transforms import Compose, CropAroundBbox, ClipAndScale
+from manet.data.transforms import CropAroundBbox, RandomShiftBbox, RandomFlipTransform
+from fexp.transforms import Compose, ClipAndScale
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
@@ -123,7 +122,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
                 f'Dice = {train_dice.item():.4g} Avg DICE = {avg_dice:.4g} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
-                f'GPU{args.local_rank}'
+                f'GPU {args.local_rank} '
+                f'LR = {optimizer.param_groups[0]["lr"], global_step + iter_idx}'
             )
 
     return avg_loss, time.perf_counter() - start_epoch
@@ -203,6 +203,7 @@ def build_model(device):
 def init_train_data(args, cfg, data_source, use_weights=True):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     train_list = read_list(data_source / 'training_set.txt')
+
     validation_list = read_list(data_source / 'validation_set.txt')
 
     mammography_description = read_json(data_source / 'dataset_description.json')
@@ -213,6 +214,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     # Build datasets
     train_transforms = Compose([
         ClipAndScale(None, None, [0, 1]),
+        RandomShiftBbox((100, 100)),
         CropAroundBbox((1, 1024, 1024))
     ])
 
@@ -340,7 +342,6 @@ def main(args):
                     range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
     lr_scheduler = WarmupMultiStepLR(optimizer, solver_steps, cfg.LR_GAMMA, warmup_factor=1 / 10.,
                                      warmup_iters=int(0.5 * len(train_loader)), warmup_method='linear')
-
     # Load model
     start_epoch = load_model(args, exp_path, model, optimizer, lr_scheduler)
     epoch = start_epoch
