@@ -10,6 +10,14 @@
           <option name="port" value="22" />
         </fileTransfer>
       </webServer>
+      <webServer id="08362da3-d569-4222-8bb6-5f4876dfa479" name="rt-005" url="http://172.30.128.10">
+        <fileTransfer host="172.30.128.10" port="22" privateKey="C:\Users\mm.voets\.ssh\id_rsa" accessType="SFTP" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
     </option>
   </component>
 </project>

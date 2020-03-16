@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="rt-socrates">
+  <component name="PublishConfigData" autoUpload="Always" serverName="rt-005">
     <serverData>
+      <paths name="rt-005">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/rt/Documents/DCIS-mammography" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="rt-socrates">
         <serverdata>
           <mappings>

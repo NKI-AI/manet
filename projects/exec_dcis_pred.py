@@ -59,7 +59,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             logger.info(f'Logging first batch to Tensorboard.')
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
-            logger.info(f"BoundingBox: {batch['bbox']}")
+            #logger.info(f"BoundingBox: {batch['bbox']}")
 
             image_arr = images.detach().cpu()[0, 0, ...]
             masks_arr = masks.detach().cpu()[0, ...]
