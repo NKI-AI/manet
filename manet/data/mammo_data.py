@@ -10,7 +10,6 @@ import pathlib
 import hashlib
 import numpy as np
 import zlib
-import jsonpickle
 
 from torch.utils.data import Dataset
 from manet.utils.readers import read_image
@@ -50,40 +49,37 @@ class MammoDataset(Dataset):
         #     for image in list_of_images:
         #         curr_data_dict = {'case_path': path}
         for path in self.dataset_description:
-            #data_cache = self.cache_dir / hashlib.sha224(str(dataset_description[path]).encode()).hexdigest()
-            #if data_cache.exists():
-            #    self.data = read_json(data_cache)
-            #    print(data_cache)
-            #    print("this works")
-            #else:
-            self.logger.debug(f'Parsing directory {path}.')
-            for image_dict in self.dataset_description[path]:
-                curr_data_dict = {'case_path': path, 'image_fn': pathlib.Path(image_dict['filename'])}
-                if self.filter_negatives and 'label' in image_dict:
-                    label_fn = pathlib.Path(image_dict['label'])
-                    curr_data_dict['label_fn'] = label_fn
+            data_cache = self.cache_dir / hashlib.sha224(str(path).encode()).hexdigest()
+            if data_cache.exists() and self._cache_valid:
+                self.data = read_json(data_cache)
+            else:
+                self.logger.debug(f'Parsing directory {path}.')
+                for image_dict in self.dataset_description[path]:
+                    #curr_data_dict = {'case_path': path, 'image_fn': pathlib.Path(image_dict['filename'])}
+                    curr_data_dict = {'case_path': path, 'image_fn': image_dict['filename']}
+                    if self.filter_negatives and 'label' in image_dict:
+                        label_fn = pathlib.Path(image_dict['label'])
+                        label_fns = image_dict['label']
+                        curr_data_dict['label_fn'] = label_fns
 
-                    if self.use_bounding_boxes:
-                        try:
-                            bbox = self.compute_bounding_box(label_fn)
-                            curr_data_dict['bbox'] = bbox
-                        except IndexError:
-                            self.logger.error(f'Cannot compute bounding box of {label_fn}.')
-                            continue
-                    print(1, curr_data_dict)
-                    self.data.append(curr_data_dict)
-                    thawed = jsonpickle.encode(curr_data_dict)
-                    print(2, thawed)
-                    write_json(data_cache, thawed)
-                else:
-                    NotImplementedError()
+                        if self.use_bounding_boxes:
+                            try:
+                                bbox = self.compute_bounding_box(label_fn)
+                                curr_data_dict['bbox'] = bbox
+                            except IndexError:
+                                self.logger.error(f'Cannot compute bounding box of {label_fn}.')
+                                continue
+                        self.data.append(curr_data_dict)
+                        #write_json(data_cache, curr_data_dict)
+                    else:
+                        NotImplementedError()
 
         self.logger.info(f'Loaded dataset of size {len(self.data)}.')
 
     def compute_bounding_box(self, label_fn):
         # TODO: Better building of cache names.
         bbox_cache = self.cache_dir / hashlib.sha224(str(label_fn).encode()).hexdigest()
-        if bbox_cache.exists(): #and self._cache_valid:
+        if bbox_cache.exists() and self._cache_valid:
             bbox = read_json(bbox_cache)[str(label_fn)]
         else:
             self.logger.debug(f'Computing bounding box for {label_fn}.')
@@ -103,8 +99,12 @@ class MammoDataset(Dataset):
             self._cache_valid = False
             write_list(cache_checksum, [current_checksum])
         else:
-            checksum = read_list(cache_checksum)[0]
-            self._cache_valid = True if current_checksum == checksum else False
+            checksum = int(read_list(cache_checksum)[0])
+            #self._cache_valid = True if current_checksum == checksum else False
+            if current_checksum == checksum:
+                self._cache_valid = True
+            else:
+                self._cache_valid = False
 
     def __description_checksum(self):
         # https://stackoverflow.com/a/42148379
@@ -118,13 +118,12 @@ class MammoDataset(Dataset):
 
     def __getitem__(self, idx):
         data_dict = self.data[idx]
-        print(data_dict, self.data[idx])
 
         if not self.filter_negatives or not self.use_bounding_boxes:
             raise NotImplementedError()
 
-        image_fn = self.data_root / data_dict['image_fn']
-        label_fn = self.data_root / data_dict['label_fn']
+        image_fn = self.data_root / pathlib.Path(data_dict['image_fn'])
+        label_fn = self.data_root / pathlib.Path(data_dict['label_fn'])
         bbox = data_dict['bbox']
 
         image = read_image(image_fn, force_2d=True, no_metadata=True, dtype=np.float32)[np.newaxis, ...]

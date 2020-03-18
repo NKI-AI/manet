@@ -108,7 +108,7 @@ class CropAroundBbox(object):
 
         sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
         sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
-        #del sample['bbox']
+        del sample['bbox']
         return sample
 
 
