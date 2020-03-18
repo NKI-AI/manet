@@ -218,7 +218,14 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
     output = defaultdict(list)
     labels_found = []
 
-    for fn in mammograms:
+    #load txt with dcis stage labels as dictionary
+    dcis_stage = {}
+    with open("labels.txt") as f:
+        for line in f:
+            (key, val) = line.split()
+            dcis_stage[key] = int(val)
+
+for fn in mammograms:
         patient_id = mammograms[fn]['PatientID']
         study_instance_uid = mammograms[fn]['StudyInstanceUID']
         folder_name = Path(patient_mapping[patient_id]) / uid_mapping[study_instance_uid]
@@ -265,6 +272,12 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
             curr_dict['label'] = label
         curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
         curr_dict['PatientID'] = patient_mapping[patient_id]
+
+        try:
+            curr_dict['DCIS_stage'] = dcis_labels[patient_id]
+        except KeyError:
+            print('Patient {} does not seem to exist, please check'.format(patient_id))
+            continue
 
         output[str(f)].append(curr_dict)
 
