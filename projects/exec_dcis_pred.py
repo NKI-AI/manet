@@ -207,6 +207,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     validation_list = read_list(data_source / 'validation_set.txt')
 
     mammography_description = read_json(data_source / 'dataset_description.json')
+    #mammography_description = read_json(data_source / 'dataset_descr_stage.json')
 
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
