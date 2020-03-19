@@ -214,18 +214,18 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
     return uid_mapping
 
 
-def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, create_links=True):
+def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, old_path, new_path, create_links=True):
     output = defaultdict(list)
     labels_found = []
 
     #load txt with dcis stage labels as dictionary
     dcis_stage = {}
-    with open("labels.txt") as f:
+    with open(old_path / 'labels.txt') as f:
         for line in f:
             (key, val) = line.split()
             dcis_stage[key] = int(val)
 
-for fn in mammograms:
+    for fn in mammograms:
         patient_id = mammograms[fn]['PatientID']
         study_instance_uid = mammograms[fn]['StudyInstanceUID']
         folder_name = Path(patient_mapping[patient_id]) / uid_mapping[study_instance_uid]
@@ -239,27 +239,27 @@ for fn in mammograms:
         label_path = Path(str(fn).replace('.dcm', '-label.nrrd'))
         # TODO: Find labels with other name and log this
 
-        if label_path.exists():
-            logger.info(f'Linking / copying label {label_path}')
-            try:
-                if create_links:
-                    os.symlink(label_path, f / Path(label_path.name))
-                else:
-                    shutil.copy(label_path, f / Path(label_path.name))
-
-            except FileExistsError as e:
-                logger.info(f'Label {label_path} exists.')
-            label = str(f / Path(label_path.name))
-            labels_found.append(label)
-
-        try:
-            if create_links:
-                os.symlink(fn, new_fn)
-            else:
-                shutil.copy(fn, new_fn)
-
-        except FileExistsError as e:
-            logger.info(f'Symlinking for {fn} already exists.')
+        # if label_path.exists():
+        #     logger.info(f'Linking / copying label {label_path}')
+        #     try:
+        #         if create_links:
+        #             os.symlink(label_path, f / Path(label_path.name))
+        #         else:
+        #             shutil.copy(label_path, f / Path(label_path.name))
+        #
+        #     except FileExistsError as e:
+        #         logger.info(f'Label {label_path} exists.')
+        #     label = str(f / Path(label_path.name))
+        #     labels_found.append(label)
+        #
+        # try:
+        #     if create_links:
+        #         os.symlink(fn, new_fn)
+        #     else:
+        #         shutil.copy(fn, new_fn)
+        #
+        # except FileExistsError as e:
+        #     logger.info(f'Symlinking for {fn} already exists.')
 
         curr_dict = mammograms[str(fn)].copy()
 
@@ -274,7 +274,7 @@ for fn in mammograms:
         curr_dict['PatientID'] = patient_mapping[patient_id]
 
         try:
-            curr_dict['DCIS_stage'] = dcis_labels[patient_id]
+            curr_dict['DCIS_stage'] = dcis_stage[patient_id]
         except KeyError:
             print('Patient {} does not seem to exist, please check'.format(patient_id))
             continue
@@ -305,7 +305,7 @@ def main():
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
     logging.info('Writing new directory structure. This can take a while.')
     new_mammograms = create_temporary_file_structure(
-        mammograms, patient_mapping, uid_mapping, args.dest, create_links=not args.copy_data)
+        mammograms, patient_mapping, uid_mapping, args.path, args.dest, create_links=not args.copy_data)
 
     write_json(args.dest / 'dataset_description.json', new_mammograms)
     write_list(new_mammograms.keys(), args.dest / 'imported_studies.log')
