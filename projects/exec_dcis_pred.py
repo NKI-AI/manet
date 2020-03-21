@@ -21,7 +21,7 @@ from apex import amp
 from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
 from manet.nn.common.tensor_ops import reduce_tensor_dict
-from manet.nn.training.optim import WarmupMultiStepLR, build_optim
+from manet.nn.training.lr_scheduler import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset

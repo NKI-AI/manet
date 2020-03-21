@@ -14,10 +14,24 @@ import torch
 import logging
 from apex.optimizers import FusedAdam
 
+class Scheduler(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, last_epoch=-1):
+        super().__init__(optimizer, last_epoch)
+        self.logger = logging.getLogger(type(self).__name__)
+
+    def state_dict(self):
+        """Returns the state of the scheduler as a :class:`dict`.
+
+        It contains an entry for every variable in self.__dict__ which
+        is not the optimizer.
+        """
+        return {key: value for key, value in self.__dict__.items() if key not in ['optimizer', 'logger']}
+
+
 # FIXME ideally this would be achieved with a CombinedLRScheduler,
 # separating MultiStepLR with WarmupLR
 # but the current LRScheduler design doesn't allow it
-class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
+class WarmupMultiStepLR(Scheduler):
     def __init__(
         self,
         optimizer,
@@ -28,7 +42,6 @@ class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
         warmup_method="linear",
         last_epoch=-1,
     ):
-        self.logger = logging.getLogger(type(self).__name__)
         if not list(milestones) == sorted(milestones):
             raise ValueError(f'Milestones should be a list of increasing integers. Got {milestones}.')
 
@@ -60,9 +73,12 @@ class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
             for base_lr in self.base_lrs
         ]
 
+    def state_dict(self):
+        return {key: value for key, value in self.__dict__.items() if key not in ['optimizer', 'logger']}
+
 
 # From https://github.com/Harshvardhan1/cyclic-learning-schedulers-pytorch/blob/master/cyclicLR.py
-class CyclicLinearLR(torch.optim.lr_scheduler._LRScheduler):
+class CyclicLinearLR(Scheduler):
     r"""
     Implements reset on milestones inspired from Linear learning rate decay
 
@@ -83,7 +99,6 @@ class CyclicLinearLR(torch.optim.lr_scheduler._LRScheduler):
     """
 
     def __init__(self, optimizer, milestones, eta_min=0, last_epoch=-1):
-        self.logger = logging.getLogger(type(self).__name__)
         if not list(milestones) == sorted(milestones):
             raise ValueError(f'Milestones should be a list of increasing integers. Got {milestones}.')
 
@@ -108,7 +123,7 @@ class CyclicLinearLR(torch.optim.lr_scheduler._LRScheduler):
                 for base_lr in self.base_lrs]
 
 
-class WarmRestartLR(torch.optim.lr_scheduler._LRScheduler):
+class WarmRestartLR(Scheduler):
     r"""Set the learning rate of each parameter group using a cosine annealing
     schedule, where :math:`\eta_{max}` is set to the initial lr and
     :math:`T_{cur}` is the number of epochs since the last restart in SGDR:

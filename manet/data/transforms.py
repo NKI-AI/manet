@@ -138,7 +138,6 @@ class RandomGaussianNoise(object):
         return x * (1.0 + np.random.randn(*x.shape).astype(np.float32) * self.std)
 
 
-
 class RandomZoomTransform(object):
     def __init__(self, **kwargs):
         self.mask = True
@@ -208,9 +207,6 @@ class RandomElasticTransform(object):
                                        borderMode=cv2.BORDER_REFLECT_101, interpolation=cv2.INTER_LINEAR)*255.0 for i in
                              range(x.shape[0])]
             return np.stack(np.rint(out_stack), axis=0).astype(x.dtype)
-
-
-
 
 
 class RandomFlipTransformExt(object):

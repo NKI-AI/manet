@@ -8,7 +8,7 @@ LICENSE file in the root directory of this source tree.
 """
 import numpy as np
 
-from manet.utils.readers import read_image
+from fexp.readers import read_image
 from manet.utils.bbox import bounding_box
 from manet.sys.io import read_json, write_json
 from tqdm import tqdm
