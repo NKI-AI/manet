@@ -63,28 +63,11 @@ class CropAroundBbox(object):
         bbox = BoundingBox(sample['bbox'])
 
         effective_output_size = self.output_size[-bbox.ndim:]
-        if np.all(bbox.size <= effective_output_size):
-            # A center crop is fine.
-            new_bbox = bbox.bounding_box_around_center(effective_output_size).astype(int)
-        else:
-            starting_point = bbox.coordinates
-            delta = np.clip(effective_output_size - bbox.size, 0, bbox.size.max()) // 2
-            jitter = np.random.randint(-delta, delta + 1)
-            # Here it makes sense to overwrite the add operator of bounding box
-            new_bbox = BoundingBox(combine_bbox(starting_point - jitter, effective_output_size), dtype=int)
+        new_bbox = bbox.bounding_box_around_center(effective_output_size).astype(int)
 
-        # del sample['bbox']
-        # TODO: Extra dimension is not always needed.
-
-        try:
-            sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
-        except ValueError as e:
-            print(new_bbox.squeeze(0), new_bbox, sample['image'].shape, sample['image_fn'])
-            raise ValueError(e)
-
-        if 'mask' in sample:
-            sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
-
+        sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
+        sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
+        del sample['bbox']
         return sample
 
 
@@ -96,7 +79,7 @@ class RandomShiftBbox(object):
         # TODO: fexp, if is already BoundingBox, casting is not needed.
         bbox = BoundingBox(sample['bbox'])
         shift = np.random.randint(-self.max_shift, self.max_shift)
-        new_bbox = bbox + shift
+        new_bbox = (bbox + shift).astype(np.int)
         sample['bbox'] = new_bbox
         return sample
 
@@ -207,17 +190,3 @@ class RandomElasticTransform(object):
                                        borderMode=cv2.BORDER_REFLECT_101, interpolation=cv2.INTER_LINEAR)*255.0 for i in
                              range(x.shape[0])]
             return np.stack(np.rint(out_stack), axis=0).astype(x.dtype)
-
-
-class RandomFlipTransformExt(object):
-    def __init__(self):
-        idx = np.random.choice(len(cfg.UNET.FLIP_AXIS), 1)[0]
-        self.mask = cfg.UNET.FLIP_MASK[idx]
-        self.axis = cfg.UNET.FLIP_AXIS[idx]
-        self.do_flip = np.random.random_sample() < 0.5
-
-    def apply(self, x):
-        if self.do_flip:
-            return np.flip(x, axis=self.axis)
-        else:
-            return x

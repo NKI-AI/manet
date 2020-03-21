@@ -14,6 +14,7 @@ import torch
 import logging
 from apex.optimizers import FusedAdam
 
+
 class Scheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, last_epoch=-1):
         super().__init__(optimizer, last_epoch)
@@ -23,7 +24,7 @@ class Scheduler(torch.optim.lr_scheduler._LRScheduler):
         """Returns the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in self.__dict__ which
-        is not the optimizer.
+        is not the optimizer or logger.
         """
         return {key: value for key, value in self.__dict__.items() if key not in ['optimizer', 'logger']}
 
