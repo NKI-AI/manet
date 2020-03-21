@@ -1,0 +1,10 @@
+DEBUG: true
+MULTIGPU: 0
+APEX: 1
+STARTER_LR: 0.0001
+UNET:
+ AUG_LST: ['RandomShiftTransform', 'RandomZoomTransform']
+OPTIMIZER: 'Adam'
+WEIGHT_DECAY: 0.0001
+HARD_MINING_FREQ: 1
+
