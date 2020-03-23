@@ -98,10 +98,12 @@ class Annotation:
                 annotation_dict = self.annotations['annotations'][name]
                 scaling = self._annotation_spacing / self.spacing
                 points = np.fliplr(np.asarray(annotation_dict['points']) * scaling)
-                bbox = np.asarray(annotation_dict['bbox'])
-                bbox = np.concatenate([bbox[:2][::-1] * scaling, bbox[2:][::-1] * scaling]).astype(np.int)
 
-                out_dict = {'points': points, 'bbox': bbox}
+                out_dict = {'points': points}
+                if 'bbox' in annotation_dict:
+                    bbox = np.asarray(annotation_dict['bbox'])
+                    bbox = np.concatenate([bbox[:2][::-1] * scaling, bbox[2:][::-1] * scaling]).astype(np.int)
+                    out_dict['bbox'] = bbox
 
                 if idx == 0:
                     self.contour_annotations.append(out_dict)
@@ -166,7 +168,7 @@ def parse_args():
     parser.add_argument(
         'dataset_description', default=None, type=pathlib.Path,
         help="""JSON file describing data structure.
-        
+
         We assume a dictionary structure patient_id -> study_id -> [{'image': ..., 'annotation': ...}]
         """)
     parser.add_argument('--output-png', action='store_true', help='Will output a png image with overlay.')
@@ -188,13 +190,14 @@ def main():
     for patient_id in dataset_description:
         for study_no in dataset_description[patient_id]:
             for image_dict in dataset_description[patient_id][study_no]:
-                data_fns.append((image_dict['image'], image_dict['annotation']))
+                data_fns.append((args.input_dir / image_dict['image'], args.input_dir / image_dict['annotation']))
                 num_data_points += 1
     print(f'Collected {num_data_points} cases.')
 
     annotations = []
     print('Collecting annotations...')
     for curr_image_fn, curr_annotations_fn in tqdm(data_fns):
+        tqdm.write(f'Working on {curr_image_fn} to collect annotations...')
         # name = annotation_fn.stem
         # curr_image_fn = f'/Users/jonas/PycharmProjects/small_features/dp{name}/original_image.dcm'
         curr_mammogram = read_mammogram(curr_image_fn, dtype=np.float, new_behavior=True)
@@ -221,7 +224,7 @@ def main():
 
         mask = compute_mask(curr_mammogram.data, new_coordinates, size=size)
         mask_image = Image(mask, curr_mammogram.header)
-        mask_image.to_filename(image_fn.stem + '_mask.nrrd', compression=True)
+        mask_image.to_filename(pathlib.Path(curr_image_fn.parent) / str(curr_image_fn.stem + '_mask.nrrd'), compression=True)
 
         if args.output_png:
             pil_image = plot_2d(curr_mammogram.data, mask, points=new_coordinates)
