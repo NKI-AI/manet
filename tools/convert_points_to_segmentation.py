@@ -20,6 +20,7 @@ import skimage.measure
 import numpy as np
 import pathlib
 import argparse
+import pickle
 import SimpleITK as sitk
 
 from fexp.plotting import plot_2d
@@ -196,21 +197,32 @@ def main():
 
     annotations = []
     print('Collecting annotations...')
-    for curr_image_fn, curr_annotations_fn in tqdm(data_fns):
-        tqdm.write(f'Working on {curr_image_fn} to collect annotations...')
-        # name = annotation_fn.stem
-        # curr_image_fn = f'/Users/jonas/PycharmProjects/small_features/dp{name}/original_image.dcm'
-        curr_mammogram = read_mammogram(curr_image_fn, dtype=np.float, new_behavior=True)
-        # curr_annotations_fn = f'/Users/jonas/PycharmProjects/small_annotations/{name}.json'
-        a = Annotation(curr_annotations_fn, curr_mammogram.spacing)
-        num_annotations = a.num_annotations[1]
-        if num_annotations > 0:
-            annotations.append((curr_image_fn, a))
+    pickle_path = args.input_dir / 'annotations.pkl'
+    if not pickle_path.exists():
+        for curr_image_fn, curr_annotations_fn in tqdm(data_fns):
+            # name = annotation_fn.stem
+            # curr_image_fn = f'/Users/jonas/PycharmProjects/small_features/dp{name}/original_image.dcm'
+            curr_mammogram = read_mammogram(curr_image_fn, dtype=np.float, new_behavior=True)
+            # curr_annotations_fn = f'/Users/jonas/PycharmProjects/small_annotations/{name}.json'
+            a = Annotation(curr_annotations_fn, curr_mammogram.spacing)
+            num_annotations = a.num_annotations[1]
+            if num_annotations > 0:
+                annotations.append((curr_image_fn, a))
+        with open(pickle_path, 'w') as f:
+            pickle.dump(annotations, f)
+    else:
+        print('Loading annotations from pickle...')
+        with open(pickle_path, 'r') as f:
+            annotations = pickle.load(f)
 
     # size to look at:
     size_to_find = 0.20
     for image_fn, annotation in tqdm(annotations):
         tqdm.write(f'Working on {image_fn}...')
+        write_to = pathlib.Path(curr_image_fn.parent) / str(curr_image_fn.stem + '_mask.nrrd')
+        if write_to.exists():
+            print(f'Mask exists. Continuing...')
+            continue
         curr_mammogram = read_mammogram(image_fn, dtype=np.float, new_behavior=True)
         coordinates = []
         for points_data in annotation.points_annotations:
@@ -224,11 +236,12 @@ def main():
 
         mask = compute_mask(curr_mammogram.data, new_coordinates, size=size)
         mask_image = Image(mask, curr_mammogram.header)
-        mask_image.to_filename(pathlib.Path(curr_image_fn.parent) / str(curr_image_fn.stem + '_mask.nrrd'), compression=True)
 
         if args.output_png:
             pil_image = plot_2d(curr_mammogram.data, mask, points=new_coordinates)
             pil_image.save(args.input_dir / 'pngs' / annotation.annotations_fn.stem + '.png')
+
+        mask_image.to_filename(write_to, compression=True)
 
 
 if __name__ == '__main__':
