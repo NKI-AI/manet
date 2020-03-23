@@ -39,6 +39,7 @@ class MammoDataset(Dataset):
         self.dataset_description = dataset_description
 
         self.data = []
+        labels = []
 
         self._cache_valid = True
         self.validate_cache()  # Pass
@@ -56,21 +57,23 @@ class MammoDataset(Dataset):
                 self.logger.debug(f'Parsing directory {path}.')
                 for image_dict in self.dataset_description[path]:
                     #curr_data_dict = {'case_path': path, 'image_fn': pathlib.Path(image_dict['filename'])}
-                    curr_data_dict = {'case_path': path, 'image_fn': image_dict['filename']}
+                    curr_data_dict = {'case_path': path, 'image_fn': image_dict['filename'], 'dcis_stage': image_dict['DCIS_stage']}
                     if self.filter_negatives and 'label' in image_dict:
                         label_fn = pathlib.Path(image_dict['label'])
-                        label_fns = image_dict['label']
+                        label_fns = image_dict['label'] #because pathlib.path not json serializable
+                        labels.append(label_fns)
                         curr_data_dict['label_fn'] = label_fns
 
                         if self.use_bounding_boxes:
                             try:
                                 bbox = self.compute_bounding_box(label_fn)
-                                curr_data_dict['bbox'] = bbox
+                                curr_data_dict['bbox'] = [int(i) for i in bbox]
                             except IndexError:
                                 self.logger.error(f'Cannot compute bounding box of {label_fn}.')
                                 continue
                         self.data.append(curr_data_dict)
-                        #write_json(data_cache, curr_data_dict)
+                        write_json(data_cache, curr_data_dict)
+                        write_list('list_labels', labels)
                     else:
                         NotImplementedError()
 
@@ -125,6 +128,7 @@ class MammoDataset(Dataset):
         image_fn = self.data_root / pathlib.Path(data_dict['image_fn'])
         label_fn = self.data_root / pathlib.Path(data_dict['label_fn'])
         bbox = data_dict['bbox']
+        stage = data_dict['dcis_stage']
 
         image = read_image(image_fn, force_2d=True, no_metadata=True, dtype=np.float32)[np.newaxis, ...]
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)
@@ -135,6 +139,7 @@ class MammoDataset(Dataset):
             'bbox': bbox,
             'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
             'label_fn': str(label_fn),
+            'stage': stage
         }
 
         if self.transform:

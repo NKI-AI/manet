@@ -206,9 +206,8 @@ def init_train_data(args, cfg, data_source, use_weights=True):
 
     validation_list = read_list(data_source / 'validation_set.txt')
 
-    mammography_description = read_json(data_source / 'dataset_description.json')
+    mammography_description = read_json(data_source / 'dataset_description2.json')
     #mammography_description = read_json(data_source / 'dataset_descr_stage.json')
-
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
 
@@ -218,7 +217,6 @@ def init_train_data(args, cfg, data_source, use_weights=True):
         RandomShiftBbox((100, 100)),
         CropAroundBbox((1, 1024, 1024))
     ])
-
     train_set = MammoDataset(training_description, data_source, transform=train_transforms)
     validation_set = MammoDataset(validation_description, data_source, transform=train_transforms)
     logger.info(f'Train dataset size: {len(train_set)}. '
