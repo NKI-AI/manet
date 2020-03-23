@@ -200,10 +200,7 @@ def main():
     pickle_path = args.input_dir / 'annotations.pkl'
     if not pickle_path.exists():
         for curr_image_fn, curr_annotations_fn in tqdm(data_fns):
-            # name = annotation_fn.stem
-            # curr_image_fn = f'/Users/jonas/PycharmProjects/small_features/dp{name}/original_image.dcm'
             curr_mammogram = read_mammogram(curr_image_fn, dtype=np.float, new_behavior=True)
-            # curr_annotations_fn = f'/Users/jonas/PycharmProjects/small_annotations/{name}.json'
             a = Annotation(curr_annotations_fn, curr_mammogram.spacing)
             num_annotations = a.num_annotations[1]
             if num_annotations > 0:
@@ -219,7 +216,7 @@ def main():
     size_to_find = 0.20
     for image_fn, annotation in tqdm(annotations):
         tqdm.write(f'Working on {image_fn}...')
-        write_to = pathlib.Path(curr_image_fn.parent) / str(curr_image_fn.stem + '_mask.nrrd')
+        write_to = pathlib.Path(image_fn.parent) / str(image_fn.stem + '_mask.nrrd')
         if write_to.exists():
             print(f'Mask exists. Continuing...')
             continue
@@ -239,7 +236,7 @@ def main():
 
         if args.output_png:
             pil_image = plot_2d(curr_mammogram.data, mask, points=new_coordinates)
-            pil_image.save(args.input_dir / 'pngs' / annotation.annotations_fn.stem + '.png')
+            pil_image.save(args.input_dir / 'pngs' / str(annotation.annotations_fn.stem + '.png'))
 
         mask_image.to_filename(write_to, compression=True)
 
