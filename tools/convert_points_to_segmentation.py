@@ -208,11 +208,11 @@ def main():
             num_annotations = a.num_annotations[1]
             if num_annotations > 0:
                 annotations.append((curr_image_fn, a))
-        with open(pickle_path, 'w') as f:
+        with open(pickle_path, 'wb') as f:
             pickle.dump(annotations, f)
     else:
         print('Loading annotations from pickle...')
-        with open(pickle_path, 'r') as f:
+        with open(pickle_path, 'rb') as f:
             annotations = pickle.load(f)
 
     # size to look at:
