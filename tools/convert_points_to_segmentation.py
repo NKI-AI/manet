@@ -20,11 +20,13 @@ import skimage.measure
 import numpy as np
 import pathlib
 import argparse
+import SimpleITK as sitk
 
 from fexp.plotting import plot_2d
 from fexp.readers import read_mammogram
-from fexp.utils.io import read_json, read_list
+from fexp.utils.io import read_json
 from fexp.utils.bbox import crop_to_bbox
+from fexp.image import Image
 from skimage.filters import threshold_otsu
 from skimage.morphology import remove_small_holes, remove_small_objects
 from skimage.morphology import convex_hull_image
@@ -154,62 +156,76 @@ def compute_mask(image, all_coordinates, size):
 def parse_args():
     """Parse input arguments"""
     parser = argparse.ArgumentParser(
-        description='Create masks from point annotations',
+        description='Create masks from point annotations. Will write to the original folder',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(
+        'input_dir', type=pathlib.Path,
+        help="Directory to data",
+    )
+    parser.add_argument(
         'dataset_description', default=None, type=pathlib.Path,
-        help="""Text file describing data structure.
+        help="""JSON file describing data structure.
         
-        We assume a list of the form where each line is similar to:
-        full_path_to_image.dcm full_path_to_annotation.json resulting_object_name.nrrd
+        We assume a dictionary structure patient_id -> study_id -> [{'image': ..., 'annotation': ...}]
         """)
-    parser.add_argument('--num-workers', default=8, help='Number of workers to convert data.')
+    parser.add_argument('--output-png', action='store_true', help='Will output a png image with overlay.')
 
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    dataset_description = read_list(args.dataset_description)
-    data_fns = [_.split(' ') for _ in dataset_description]
+    dataset_description = read_json(args.dataset_description)
 
-    # annotation_fns = pathlib.Path('/Users/jonas/PycharmProjects/small_annotations/').glob('*.json')
+    if args.output_png:
+        (args.input_dir / 'pngs').mkdir(exist_ok=True)
+
+    # Collect all cases image_fn, annotation_fn
+    print('Collecting cases from description file...')
+    data_fns = []
+    num_data_points = 0
+    for patient_id in dataset_description:
+        for study_no in dataset_description[patient_id]:
+            for image_dict in dataset_description[patient_id][study_no]:
+                data_fns.append((image_dict['image'], image_dict['annotation']))
+                num_data_points += 1
+    print(f'Collected {num_data_points} cases.')
 
     annotations = []
-    for curr_image_fn, curr_annotations_fn, output_name in tqdm(data_fns):
+    print('Collecting annotations...')
+    for curr_image_fn, curr_annotations_fn in tqdm(data_fns):
         # name = annotation_fn.stem
         # curr_image_fn = f'/Users/jonas/PycharmProjects/small_features/dp{name}/original_image.dcm'
-        curr_image, metadata = read_mammogram(curr_image_fn, dtype=np.float)
+        curr_mammogram = read_mammogram(curr_image_fn, dtype=np.float, new_behavior=True)
         # curr_annotations_fn = f'/Users/jonas/PycharmProjects/small_annotations/{name}.json'
-        a = Annotation(curr_annotations_fn, metadata['spacing'])
+        a = Annotation(curr_annotations_fn, curr_mammogram.spacing)
         num_annotations = a.num_annotations[1]
         if num_annotations > 0:
             annotations.append((curr_image_fn, a))
 
     # size to look at:
     size_to_find = 0.20
-    for image_fn, annotation in annotations:
-        print(f'Working on {image_fn}')
-        image, metadata = read_mammogram(image_fn, dtype=np.float)
+    for image_fn, annotation in tqdm(annotations):
+        tqdm.write(f'Working on {image_fn}...')
+        curr_mammogram = read_mammogram(image_fn, dtype=np.float, new_behavior=True)
         coordinates = []
         for points_data in annotation.points_annotations:
             coordinates.append(points_data['points'])
         coordinates = np.vstack(coordinates)
 
-        new_coordinates = find_new_center(image, coordinates)
-        size = int(np.ceil(size_to_find / metadata['spacing'][0]))
+        new_coordinates = find_new_center(curr_mammogram.data, coordinates)
+        size = int(np.ceil(size_to_find / curr_mammogram.spacing[0]))
         if size % 2 == 0:
             size += 1
 
-        mask = compute_mask(image, new_coordinates, size=size)
-        # sitk_image = sitk.GetImageFromArray(mask)
-        # sitk_image.SetSpacing(list(metadata['spacing']) + [1])
-        #
-        # sitk.WriteImage(sitk_image, f'curr_mask.nrrd', True)
+        mask = compute_mask(curr_mammogram.data, new_coordinates, size=size)
+        mask_image = Image(mask, curr_mammogram.header)
+        mask_image.to_filename(image_fn.stem + '_mask.nrrd', compression=True)
 
-        pil_image = plot_2d(image, mask, points=new_coordinates)
-        pil_image.save(annotation.annotations_fn.stem + '_annotations.png')
+        if args.output_png:
+            pil_image = plot_2d(curr_mammogram.data, mask, points=new_coordinates)
+            pil_image.save(args.input_dir / 'pngs' / annotation.annotations_fn.stem + '.png')
 
 
 if __name__ == '__main__':

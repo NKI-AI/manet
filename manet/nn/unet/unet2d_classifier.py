@@ -161,6 +161,10 @@ class UNet(nn.Module):
 
         x = self.ups[0](xs[-1], xs[-2]) if not (self.use_classifier and self.forward_domain_cls) else self.ups[0](
             xs[-1], xs[-2], z)
+
+        # If no classifier:
+        #  x = self.ups[0](xs[-1], xs[-2])
+
         for idx in range(self.depth - 1):
             x = self.ups[idx + 1](x, xs[self.depth - idx - 2]) if not (
                         self.use_classifier and self.forward_domain_cls) else self.ups[idx + 1](x, xs[
