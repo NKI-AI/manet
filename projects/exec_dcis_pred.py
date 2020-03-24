@@ -20,17 +20,18 @@ from apex import amp
 from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
 from manet.nn.common.tensor_ops import reduce_tensor_dict
-from manet.nn.training.optim import WarmupMultiStepLR, build_optim
+from manet.nn.training.lr_scheduler import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
 from manet.data.transforms import CropAroundBbox, RandomShiftBbox, RandomFlipTransform
 from fexp.transforms import Compose, ClipAndScale
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
+from manet.nn.unet.unet_classifier import UnetModel2dClassifier
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
-from manet.utils.plotting import plot_2d
+from fexp.plotting import plot_2d
 
 import torch.nn.functional as F
 
@@ -40,26 +41,33 @@ logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
 
 
-def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer):
+def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
     model.train()
     avg_loss = 0.
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+    loss_fn = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
+
+    if use_classifier:
+        loss_fn += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
 
     for iter_idx, batch in enumerate(data_loader):
         images = batch['image'].to(args.device)
         masks = batch['mask'].to(args.device)
+
+        ground_truth = [masks]
+        if use_classifier:
+            ground_truth += batch['class'].to(args.device)
 
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
             logger.info(f'Logging first batch to Tensorboard.')
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
-            #logger.info(f"BoundingBox: {batch['bbox']}")
+            logger.info(f"BoundingBox: {batch['bbox']}")
 
             image_arr = images.detach().cpu()[0, 0, ...]
             masks_arr = masks.detach().cpu()[0, ...]
@@ -75,9 +83,13 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
         train_loss = torch.tensor(0.).to(args.device)
-        output = model(images)
 
-        train_loss += loss_fn(output, masks)
+        output = model(images)
+        if not isinstance(output, (list, tuple)):
+            output = [output]
+
+        losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
+        train_loss += losses.sum()
 
         # Backprop the loss, use APEX if necessary
         if cfg.APEX >= 0:
@@ -103,7 +115,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        train_dice = dice_fn(F.softmax(output)[0, 1, ...], masks)
+        train_dice = dice_fn(F.softmax(output[0])[0, 1, ...], masks)
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}
@@ -115,11 +127,15 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 writer.add_scalar(key, metric_dict[key].item(), global_step + iter_idx)
                 writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step + iter_idx)
 
+        loss_str = f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
+        for loss_idx, loss in enumerate(losses):
+            loss_str += f'Loss_{loss_idx} = {loss.item():.4g} '
+
         if iter_idx % cfg.REPORT_INTERVAL == 0:
             logger.info(
                 f'Ep = [{epoch:3d}/{cfg.N_EPOCHS:3d}] '
                 f'It = [{iter_idx:4d}/{len(data_loader):4d}] '
-                f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
+                f'{loss_str}',
                 f'Dice = {train_dice.item():.4g} Avg DICE = {avg_dice:.4g} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
                 f'GPU {args.local_rank} '
@@ -129,7 +145,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False):
+def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=True):
     logger.info(f'Evaluation for epoch {epoch}')
     model.eval()
 
@@ -146,10 +162,20 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         for iter_idx, batch in enumerate(data_loader):
             image = batch['image'].to(args.device)
             mask = batch['mask'].to(args.device)
+
+            ground_truth = [mask]
+            if use_classifier:
+                ground_truth += batch['class'].to(args.device)
+
             output = model(image)
-            output_softmax = F.softmax(model(image), 1)
+            if not isinstance(output, (list, tuple)):
+                output = [output]
+
+            output_softmax = F.softmax(output[0], 1)
+            output_class = F.softmax(output[1], 1)
 
             if iter_idx < 1:
+                # TODO: Multiple images, using a gridding function.
                 image_arr = image.detach().cpu().numpy()[0, 0, ...]
                 output_arr = output_softmax.detach().cpu().numpy()[0, 1, ...]
 
@@ -163,8 +189,8 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
-            batch_loss = loss_fn(output, mask)
-            losses.append(batch_loss.item())
+            batch_losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
+            losses.append(batch_losses.sum().item())
 
             batch_dice = dice_fn(output_softmax[0, 1, ...], mask)
             dices.append(batch_dice.item())
@@ -187,17 +213,18 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start
 
 
-def build_model(device):
-    model = UnetModel2d(
-        1, 2, (1024, 1024), 64, 4, 0.1).to(device)
+def build_model(device, use_classifier=False):
+    if use_classifier:
+        model = None
+    else:
+        model = UnetModel2d(
+            1, 2, (1024, 1024), 64, 4, 0.1).to(device)
 
     return model
-
 
 def init_train_data(args, cfg, data_source, use_weights=True):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     train_list = read_list(data_source / 'training_set.txt')
-
     validation_list = read_list(data_source / 'validation_set.txt')
 
     mammography_description = read_json(data_source / 'dataset_description.json')
@@ -208,7 +235,13 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     # Build datasets
     train_transforms = Compose([
         ClipAndScale(None, None, [0, 1]),
-        RandomShiftBbox((100, 100)),
+        RandomFlipTransform(0.5),
+        RandomShiftBbox([100, 100]),
+        CropAroundBbox((1, 1024, 1024))
+    ])
+
+    validation_transforms = Compose([
+        ClipAndScale(None, None, [0, 1]),
         CropAroundBbox((1, 1024, 1024))
     ])
 
