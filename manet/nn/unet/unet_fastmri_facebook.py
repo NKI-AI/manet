@@ -20,14 +20,14 @@ class ConvBlock(nn.Module):
     instance normalization, relu activation and dropout.
     """
 
-    def __init__(self, in_channels, out_ch, dropout_prob):
+    def __init__(self, in_channels, out_channels, dropout_prob):
         """
 
         Parameters
         ----------
         in_channels : int
             Number of channels in the input.
-        out_ch : int
+        out_channels : int
             Number of channels in the output.
         dropout_prob : float
             Dropout probability.
@@ -35,16 +35,16 @@ class ConvBlock(nn.Module):
         super().__init__()
 
         self.in_channels = in_channels
-        self.out_ch = out_ch
+        self.out_ch = out_channels
         self.dropout_prob = dropout_prob
 
         self.layers = nn.Sequential(
-            nn.Conv2d(in_channels, out_ch, kernel_size=3, padding=1),
-            nn.InstanceNorm2d(out_ch),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.InstanceNorm2d(out_channels),
             nn.ReLU(),
             nn.Dropout2d(dropout_prob),
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-            nn.InstanceNorm2d(out_ch),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.InstanceNorm2d(out_channels),
             nn.ReLU(),
             nn.Dropout2d(dropout_prob)
         )

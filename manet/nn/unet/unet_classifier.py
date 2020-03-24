@@ -11,66 +11,14 @@ LICENSE file in the root directory of this source tree.
 import torch
 from torch import nn
 from torch.nn import functional as F
+from manet.nn.unet.unet_fastmri_facebook import ConvBlock
+from manet.nn.layers import GradMultiplication
 
 
-class ConvBlock(nn.Module):
+
+class UnetModel2dClassifier(nn.Module):
     """
-    A Convolutional Block that consists of two convolution layers each followed by
-    instance normalization, relu activation and dropout.
-    """
-
-    def __init__(self, in_channels, out_ch, dropout_prob):
-        """
-
-        Parameters
-        ----------
-        in_channels : int
-            Number of channels in the input.
-        out_ch : int
-            Number of channels in the output.
-        dropout_prob : float
-            Dropout probability.
-        """
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.out_ch = out_ch
-        self.dropout_prob = dropout_prob
-
-        self.layers = nn.Sequential(
-            nn.Conv2d(in_channels, out_ch, kernel_size=3, padding=1),
-            nn.InstanceNorm2d(out_ch),
-            nn.ReLU(),
-            nn.Dropout2d(dropout_prob),
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-            nn.InstanceNorm2d(out_ch),
-            nn.ReLU(),
-            nn.Dropout2d(dropout_prob)
-        )
-
-    def forward(self, input):
-        """
-
-        Parameters
-        ----------
-        input: torch.Tensor
-            Input tensor of shape [batch_size, self.num_channels, height, width]
-
-        Returns
-        -------
-        torch.Tensor: Output tensor of shape [batch_size, self.out_ch, height, width]
-
-        """
-        return self.layers(input)
-
-    def __repr__(self):
-        return f'ConvBlock(num_channels={self.in_channels}, out_ch={self.out_ch}, ' \
-            f'drop_prob={self.dropout_prob})'
-
-
-class UnetModel2d(nn.Module):
-    """
-    PyTorch implementation of a U-Net model.
+    PyTorch implementation of a U-Net model with a classifier attached at the bottleneck.
 
     This is based on:
         Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks
@@ -78,7 +26,15 @@ class UnetModel2d(nn.Module):
         computing and computer-assisted intervention, pages 234–241. Springer, 2015.
     """
 
-    def __init__(self, num_channels, num_classes, output_shape, num_filters, depth, dropout_prob):
+    def __init__(self,
+                 num_channels,
+                 num_segmentation_classes,
+                 num_classifier_classes,
+                 output_shape,
+                 num_filters,
+                 depth,
+                 dropout_prob,
+                 classifier_grad_scale=0.5):
         """
 
         Parameters
@@ -86,8 +42,10 @@ class UnetModel2d(nn.Module):
 
         num_channels: int
             Number of channels in the input to the U-Net model.
-        num_classes: int
+        num_segmentation_classes: int
             Number of channels in the output to the U-Net model.
+        num_classifier_classes : int
+            Number of classes in the output of the classifier.
         output_shape : list
             Required shape of the output
         num_filters: int
@@ -96,15 +54,19 @@ class UnetModel2d(nn.Module):
             Number of down-sampling and up-sampling layers.
         dropout_prob: float
             Dropout probability.
+        classifier_grad_scale : float
+            Multiplication of gradient in classifier.
         """
         super().__init__()
 
         self.num_channels = num_channels
-        self.num_classes = num_classes
+        self.num_segmentation_classes = num_segmentation_classes
+        self.num_classifier_classes = num_classifier_classes
         self.output_shape = output_shape
         self.num_filters = num_filters
         self.depth = depth
         self.dropout_prob = dropout_prob
+        self.classifier_grad_scale = classifier_grad_scale
 
         self.down_sample_layers = nn.ModuleList([ConvBlock(num_channels, num_filters, dropout_prob)])
         ch = num_filters
@@ -120,9 +82,15 @@ class UnetModel2d(nn.Module):
         self.up_sample_layers += [ConvBlock(ch * 2, ch, dropout_prob)]
         self.conv2 = nn.Sequential(
             nn.Conv2d(ch, ch // 2, kernel_size=1),
-            nn.Conv2d(ch // 2, num_classes, kernel_size=1),
-            nn.Conv2d(num_classes, num_classes, kernel_size=1),
+            nn.Conv2d(ch // 2, num_segmentation_classes, kernel_size=1),
+            nn.Conv2d(num_segmentation_classes, num_segmentation_classes, kernel_size=1),
         )
+
+        self.classifier = Classifier(
+            (depth - 2) * 2,
+            num_domains=num_classifier_classes,
+            dropout_prob=dropout_prob,
+            grad_scale=self.classifier_grad_scale)
 
     def forward(self, data):
         """
@@ -146,14 +114,31 @@ class UnetModel2d(nn.Module):
             output = F.max_pool2d(output, kernel_size=2)
 
         output = self.conv(output)
+        classifier_output = self.classifier(stack[-1])
 
         # Apply up-sampling layers
         for layer in self.up_sample_layers:
             output = F.interpolate(output, scale_factor=2, mode='bilinear', align_corners=False)
             output = torch.cat([output, stack.pop()], dim=1)
             output = layer(output)
-        return self.conv2(output)
+        return self.conv2(output), classifier_output
 
     @property
     def shape_in(self):
         return self.output_shape
+
+
+class Classifier(nn.Module):
+    def __init__(self, in_channels, num_domains=1, dropout_prob=0.1, grad_scale=0.5):
+        super().__init__()
+
+        self.grad_scale = grad_scale
+        self.conv_block = ConvBlock(in_channels, in_channels, dropout_prob=dropout_prob)
+        self.out_conv = nn.Conv2d(in_channels, num_domains, 1)
+
+    def forward(self, x):
+        x = self.conv_block(GradMultiplication(self.grad_scale)(x))
+        x = F.max_pool2d(x, kernel_size=x.size()[2:])
+        x = self.out_conv(x)
+
+        return x

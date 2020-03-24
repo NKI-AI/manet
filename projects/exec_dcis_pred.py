@@ -28,6 +28,7 @@ from manet.data.mammo_data import MammoDataset
 from manet.data.transforms import CropAroundBbox, RandomShiftBbox, RandomFlipTransform
 from fexp.transforms import Compose, ClipAndScale
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
+from manet.nn.unet.unet_classifier import UnetModel2dClassifier
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
 
 
-def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer):
+def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
     model.train()
     avg_loss = 0.
     avg_dice = 0.
@@ -51,7 +52,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
-    use_classifier = False
     if use_classifier:
         loss_fn += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
 
@@ -59,7 +59,9 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         images = batch['image'].to(args.device)
         masks = batch['mask'].to(args.device)
 
-        classes = None if not use_classifier else batch['class'].to(args.device)
+        ground_truth = [masks]
+        if use_classifier:
+            ground_truth += batch['class'].to(args.device)
 
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
@@ -83,12 +85,12 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
         train_loss = torch.tensor(0.).to(args.device)
 
-        if use_classifier:
-            output_segmentation, output_classes = model(images)
-            train_loss += loss_fn[0](output_segmentation, masks) + loss_fn[1](output_classes, classes)
-        else:
-            output_segmentation = model(images)
-            train_loss += loss_fn[0](output_segmentation, masks)
+        output = model(images)
+        if not isinstance(output, (list, tuple)):
+            output = [output]
+
+        losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
+        train_loss += losses.sum()
 
         # Backprop the loss, use APEX if necessary
         if cfg.APEX >= 0:
@@ -114,7 +116,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        train_dice = dice_fn(F.softmax(output_segmentation)[0, 1, ...], masks)
+        train_dice = dice_fn(F.softmax(output[0])[0, 1, ...], masks)
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}
@@ -126,11 +128,15 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 writer.add_scalar(key, metric_dict[key].item(), global_step + iter_idx)
                 writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step + iter_idx)
 
+        loss_str = f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
+        for loss_idx, loss in enumerate(losses):
+            loss_str += f'Loss_{loss_idx} = {loss.item():.4g} '
+
         if iter_idx % cfg.REPORT_INTERVAL == 0:
             logger.info(
                 f'Ep = [{epoch:3d}/{cfg.N_EPOCHS:3d}] '
                 f'It = [{iter_idx:4d}/{len(data_loader):4d}] '
-                f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
+                f'{loss_str}',
                 f'Dice = {train_dice.item():.4g} Avg DICE = {avg_dice:.4g} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
                 f'GPU{args.local_rank}'
@@ -139,7 +145,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False):
+def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=True):
     logger.info(f'Evaluation for epoch {epoch}')
     model.eval()
 
@@ -156,8 +162,17 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         for iter_idx, batch in enumerate(data_loader):
             image = batch['image'].to(args.device)
             mask = batch['mask'].to(args.device)
+
+            ground_truth = [mask]
+            if use_classifier:
+                ground_truth += batch['class'].to(args.device)
+
             output = model(image)
-            output_softmax = F.softmax(model(image), 1)
+            if not isinstance(output, (list, tuple)):
+                output = [output]
+
+            output_softmax = F.softmax(output[0], 1)
+            output_class = F.softmax(output[1], 1)
 
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
@@ -174,8 +189,8 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
-            batch_loss = loss_fn(output, mask)
-            losses.append(batch_loss.item())
+            batch_losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
+            losses.append(batch_losses.sum().item())
 
             batch_dice = dice_fn(output_softmax[0, 1, ...], mask)
             dices.append(batch_dice.item())
@@ -198,9 +213,13 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start
 
 
-def build_model(device):
-    model = UnetModel2d(
-        1, 2, (1024, 1024), 64, 4, 0.1).to(device)
+def build_model(device, use_classifier=False):
+    if use_classifier:
+        model = None
+
+    else:
+        model = UnetModel2d(
+            1, 2, (1024, 1024), 64, 4, 0.1).to(device)
 
     return model
 
