@@ -17,9 +17,7 @@ from manet.utils.readers import read_image
 from fexp.utils.bbox import bounding_box
 from fexp.utils.io import read_json, write_json, read_list, write_list
 
-
 logger = logging.getLogger(__name__)
-
 
 class MammoDataset(Dataset):
     def __init__(self, dataset_description, data_root, transform=None, cache_dir='/tmp'):
@@ -44,15 +42,12 @@ class MammoDataset(Dataset):
         self._cache_valid = True
         self.validate_cache()  # Pass
 
-        # for path in self.dataset_description:
-        #     self.logger.debug(f'Parsing directory {path}.')
-        #     list_of_images = self.dataset_description[path]
-        #     for image in list_of_images:
-        #         curr_data_dict = {'case_path': path}
         for path in self.dataset_description:
             data_cache = self.cache_dir / hashlib.sha224(str(path).encode()).hexdigest()
             if data_cache.exists() and self._cache_valid:
-                self.data = read_json(data_cache)
+                curr_data_cache = read_json(data_cache)
+                print(f'Pulling directory {path} from cache.')
+                self.data.append(curr_data_cache)
             else:
                 self.logger.debug(f'Parsing directory {path}.')
                 for image_dict in self.dataset_description[path]:

@@ -188,12 +188,6 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
 
 def build_model(device):
-    # model = UNet(
-    #     1, 2, valid=True, upsample_mode='nearest',
-    #     depth=4, dropout_depth=2,
-    #     dropout_prob=0.0, channels_base=32,
-    #     domain_classifier=False, forward_domain_cls=False,
-    #     bn_conv_order='brcbrc').to(device)
     model = UnetModel2d(
         1, 2, (1024, 1024), 64, 4, 0.1).to(device)
 
@@ -206,8 +200,8 @@ def init_train_data(args, cfg, data_source, use_weights=True):
 
     validation_list = read_list(data_source / 'validation_set.txt')
 
-    mammography_description = read_json(data_source / 'dataset_description2.json')
-    #mammography_description = read_json(data_source / 'dataset_descr_stage.json')
+    mammography_description = read_json(data_source / 'dataset_description.json')
+
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
 
@@ -217,8 +211,9 @@ def init_train_data(args, cfg, data_source, use_weights=True):
         RandomShiftBbox((100, 100)),
         CropAroundBbox((1, 1024, 1024))
     ])
-    train_set = MammoDataset(training_description, data_source, transform=train_transforms)
-    validation_set = MammoDataset(validation_description, data_source, transform=train_transforms)
+
+    train_set = MammoDataset(training_description, data_source, transform=train_transforms, cache_dir='/tmp/train')
+    validation_set = MammoDataset(validation_description, data_source, transform=train_transforms, cache_dir='/tmp/validate')
     logger.info(f'Train dataset size: {len(train_set)}. '
                 f'Validation data size: {len(validation_set)}.')
 
