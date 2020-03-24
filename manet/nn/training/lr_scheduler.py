@@ -15,7 +15,7 @@ import logging
 from apex.optimizers import FusedAdam
 
 
-class Scheduler(torch.optim.lr_scheduler._LRScheduler):
+class LRScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, last_epoch=-1):
         super().__init__(optimizer, last_epoch)
         self.logger = logging.getLogger(type(self).__name__)
@@ -32,7 +32,7 @@ class Scheduler(torch.optim.lr_scheduler._LRScheduler):
 # FIXME ideally this would be achieved with a CombinedLRScheduler,
 # separating MultiStepLR with WarmupLR
 # but the current LRScheduler design doesn't allow it
-class WarmupMultiStepLR(Scheduler):
+class WarmupMultiStepLR(LRScheduler):
     def __init__(
         self,
         optimizer,
@@ -49,15 +49,15 @@ class WarmupMultiStepLR(Scheduler):
         if warmup_method not in ('constant', 'linear'):
             raise ValueError(f'Only `constant` or `linear` warmup_method accepted got {warmup_method}.')
 
-        self.logger.info(f'Initialized with gamma {gamma}, warmup_factor {warmup_factor},'
-                         f' warmup_iters {warmup_iters} and warmup_method {warmup_method}.')
-
         self.milestones = milestones
         self.gamma = gamma
         self.warmup_factor = warmup_factor
         self.warmup_iters = warmup_iters
         self.warmup_method = warmup_method
         super().__init__(optimizer, last_epoch)
+
+        self.logger.info(f'Initialized with gamma {gamma}, warmup_factor {warmup_factor},'
+                         f' warmup_iters {warmup_iters} and warmup_method {warmup_method}.')
 
     def get_lr(self):
         warmup_factor = 1
@@ -79,7 +79,7 @@ class WarmupMultiStepLR(Scheduler):
 
 
 # From https://github.com/Harshvardhan1/cyclic-learning-schedulers-pytorch/blob/master/cyclicLR.py
-class CyclicLinearLR(Scheduler):
+class CyclicLinearLR(LRScheduler):
     r"""
     Implements reset on milestones inspired from Linear learning rate decay
 
@@ -124,7 +124,7 @@ class CyclicLinearLR(Scheduler):
                 for base_lr in self.base_lrs]
 
 
-class WarmRestartLR(Scheduler):
+class WarmRestartLR(LRScheduler):
     r"""Set the learning rate of each parameter group using a cosine annealing
     schedule, where :math:`\eta_{max}` is set to the initial lr and
     :math:`T_{cur}` is the number of epochs since the last restart in SGDR:
