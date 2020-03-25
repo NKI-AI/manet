@@ -124,7 +124,7 @@ def compute_mask(image, all_coordinates, size):
     for coordinates in all_coordinates:
         cropped_image, local_bbox = crop_around_point(image, coordinates, size=size)
         if cropped_image.sum() == 0:
-            print(f'Skipping {local_bbox}. Image empty.')
+            tqdm.write(f'Skipping {local_bbox}. Image empty.')
             continue
         local_threshold = threshold_otsu(cropped_image)
         local_mask = cropped_image > local_threshold
@@ -152,7 +152,7 @@ def compute_mask(image, all_coordinates, size):
         added += 1
 
         mask[local_bbox[0]:local_bbox[0] + local_bbox[2], local_bbox[1]:local_bbox[1] + local_bbox[3]] = local_mask
-    print(f'{added} added. Discarded {discarded}.')
+    tqdm.write(f'{added} added. Discarded {discarded}.')
     return mask
 
 
@@ -218,7 +218,7 @@ def main():
         tqdm.write(f'Working on {image_fn}...')
         write_to = pathlib.Path(image_fn.parent) / str(image_fn.stem + '_mask.nrrd')
         if write_to.exists():
-            print(f'Mask exists. Continuing...')
+            tqdm.write(f'Mask exists. Continuing...')
             continue
         curr_mammogram = read_mammogram(image_fn, dtype=np.float, new_behavior=True)
         coordinates = []
