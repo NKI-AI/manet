@@ -113,7 +113,7 @@ class Annotation:
 
 
 def crop_around_point(image, point, size):
-    bbox = list((point - size).astype(np.int)) + [2*size]*2
+    bbox = list(np.clip(point - size, 0, None).astype(np.int)) + [2*size]*2
     return crop_to_bbox(image, bbox), bbox
 
 
@@ -123,6 +123,10 @@ def compute_mask(image, all_coordinates, size):
     mask = np.zeros_like(image).astype(np.int)
     for coordinates in all_coordinates:
         cropped_image, local_bbox = crop_around_point(image, coordinates, size=size)
+        # If bbox is larger than the image, skip
+        if np.any(np.asarray(local_bbox)[:2] + np.asarray(local_bbox)[2:] > np.asarray(image.shape)):
+            continue
+
         if cropped_image.sum() == 0:
             tqdm.write(f'Skipping {local_bbox}. Image empty.')
             continue
@@ -150,7 +154,6 @@ def compute_mask(image, all_coordinates, size):
             discarded += 1
             continue
         added += 1
-
         mask[local_bbox[0]:local_bbox[0] + local_bbox[2], local_bbox[1]:local_bbox[1] + local_bbox[3]] = local_mask
     tqdm.write(f'{added} added. Discarded {discarded}.')
     return mask
