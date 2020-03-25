@@ -36,16 +36,12 @@ def save_model(args, exp_dir, epoch, model, optimizer, lr_scheduler, name='model
     model_state_dict = model.state_dict()
     model_state_dict = _remove_module_from_ordered_dict(model_state_dict)
 
-    lr_scheduler_dict = lr_scheduler.state_dict()
-    del lr_scheduler_dict['logger']
-
     save_dict = {
         'epoch': epoch,
         'args': args,
         'model': model_state_dict,
         'optimizer': optimizer.state_dict(),
-        #'lr_scheduler': lr_scheduler.state_dict(),
-        'lr_scheduler': lr_scheduler_dict,
+        'lr_scheduler': lr_scheduler.state_dict(),
         'exp_dir': exp_dir
     }
 

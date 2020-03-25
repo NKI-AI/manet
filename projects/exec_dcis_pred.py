@@ -47,11 +47,12 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
+    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
     if use_classifier:
+        print('Using classifier')
         loss_fn += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
 
     for iter_idx, batch in enumerate(data_loader):
@@ -67,7 +68,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             logger.info(f'Logging first batch to Tensorboard.')
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
-            logger.info(f"BoundingBox: {batch['bbox']}")
+           #logger.info(f"BoundingBox: {batch['bbox']}") #bbox deleted in transforms
 
             image_arr = images.detach().cpu()[0, 0, ...]
             masks_arr = masks.detach().cpu()[0, ...]
@@ -83,12 +84,19 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
         train_loss = torch.tensor(0.).to(args.device)
-
         output = model(images)
+
         if not isinstance(output, (list, tuple)):
             output = [output]
 
-        losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
+        new_loss = [[output[idx], ground_truth[idx]] for idx in range(len(output))]
+        # ground_truth[0] =torch.Size([1, 1024, 1024]), output[0]=torch.Size([1, 2, 1024, 1024])
+        new_loss = sum(new_loss, []) #unnest nested list
+        losses = loss_fn(new_loss[0], new_loss[1])
+        losses_list = []
+        losses_list.append(losses)
+
+        #losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
         train_loss += losses.sum()
 
         # Backprop the loss, use APEX if necessary
@@ -128,14 +136,14 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step + iter_idx)
 
         loss_str = f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
-        for loss_idx, loss in enumerate(losses):
+        for loss_idx, loss in enumerate(losses_list):
             loss_str += f'Loss_{loss_idx} = {loss.item():.4g} '
 
         if iter_idx % cfg.REPORT_INTERVAL == 0:
             logger.info(
                 f'Ep = [{epoch:3d}/{cfg.N_EPOCHS:3d}] '
                 f'It = [{iter_idx:4d}/{len(data_loader):4d}] '
-                f'{loss_str}',
+                f'{loss_str}'
                 f'Dice = {train_dice.item():.4g} Avg DICE = {avg_dice:.4g} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
                 f'GPU {args.local_rank} '
