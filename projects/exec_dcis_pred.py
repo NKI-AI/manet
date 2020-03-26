@@ -153,7 +153,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=True):
+def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
     logger.info(f'Evaluation for epoch {epoch}')
     model.eval()
 
@@ -179,8 +179,11 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             if not isinstance(output, (list, tuple)):
                 output = [output]
 
-            output_softmax = F.softmax(output[0], 1)
-            output_class = F.softmax(output[1], 1)
+            if use_classifier:
+                output_softmax = F.softmax(output[0], 1)
+                output_class = F.softmax(output[1], 1)
+            else:
+                output_softmax = F.softmax(output[0], 1)
 
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
@@ -197,8 +200,11 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
-            batch_losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
-            losses.append(batch_losses.sum().item())
+            new_batch_loss = [[output[idx], ground_truth[idx]] for idx in range(len(output))]
+            new_batch_loss = sum(new_batch_loss, [])  # unnest nested list
+            batch_losses = loss_fn(new_batch_loss[0], new_batch_loss[1])
+            #batch_losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
+            losses.append(batch_losses.sum().item()) #or losses_list?
 
             batch_dice = dice_fn(output_softmax[0, 1, ...], mask)
             dices.append(batch_dice.item())
