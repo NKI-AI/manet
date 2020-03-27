@@ -89,7 +89,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         if not isinstance(output, (list, tuple)):
             output = [output]
 
-        losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
+        losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
         train_loss += losses.sum()
 
         # Backprop the loss, use APEX if necessary
