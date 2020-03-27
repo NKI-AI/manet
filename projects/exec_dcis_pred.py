@@ -68,7 +68,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             logger.info(f'Logging first batch to Tensorboard.')
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
-           #logger.info(f"BoundingBox: {batch['bbox']}") #bbox deleted in transforms
 
             image_arr = images.detach().cpu()[0, 0, ...]
             masks_arr = masks.detach().cpu()[0, ...]
@@ -79,8 +78,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             # writer.add_image('images', image_grid, 0)
             # writer.add_image('masks', mask_grid, 0)
             # writer.add_graph(model, images.detach().cpu())
-
-            plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
+            first_image = plot_2d(image_arr, mask=masks_arr)
+            plot_overlay = torch.from_numpy(np.array(first_image))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
         train_loss = torch.tensor(0.).to(args.device)
@@ -89,14 +88,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         if not isinstance(output, (list, tuple)):
             output = [output]
 
-        new_loss = [[output[idx], ground_truth[idx]] for idx in range(len(output))]
-        # ground_truth[0] =torch.Size([1, 1024, 1024]), output[0]=torch.Size([1, 2, 1024, 1024])
-        new_loss = sum(new_loss, []) #unnest nested list
-        losses = loss_fn(new_loss[0], new_loss[1])
-        losses_list = []
-        losses_list.append(losses)
-
-        #losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
+        losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
         train_loss += losses.sum()
 
         # Backprop the loss, use APEX if necessary
