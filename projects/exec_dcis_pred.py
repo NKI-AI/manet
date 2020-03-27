@@ -12,6 +12,7 @@ import logging
 import time
 import torch
 import apex
+import pathlib
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
@@ -49,7 +50,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+    loss_fn = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
@@ -81,7 +82,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             # writer.add_image('masks', mask_grid, 0)
             # writer.add_graph(model, images.detach().cpu())
             first_image = plot_2d(image_arr, mask=masks_arr)
-            first_image.save(segmentations_path / 'first_image.png')
+            first_image.save(segmentation_path / 'first_image.png')
                         
             plot_overlay = torch.from_numpy(np.array(first_image))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
@@ -92,7 +93,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         if not isinstance(output, (list, tuple)):
             output = [output]
 
-        losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
+        losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]).to(args.device)
+        losses.requires_grad_(True)
         train_loss += losses.sum()
 
         # Backprop the loss, use APEX if necessary
@@ -132,7 +134,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step + iter_idx)
 
         loss_str = f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
-        for loss_idx, loss in enumerate(losses_list):
+        for loss_idx, loss in enumerate(losses):
             loss_str += f'Loss_{loss_idx} = {loss.item():.4g} '
 
         if iter_idx % cfg.REPORT_INTERVAL == 0:
@@ -150,6 +152,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
 
 def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
+    segmentation_path = pathlib.Path(cfg.EXP_DIR) / args.name / 'segmentations'
     logger.info(f'Evaluation for epoch {epoch}')
     model.eval()
 
@@ -175,11 +178,14 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             if not isinstance(output, (list, tuple)):
                 output = [output]
 
-            if use_classifier:
-                output_softmax = F.softmax(output[0], 1)
-                output_class = F.softmax(output[1], 1)
-            else:
-                output_softmax = F.softmax(output[0], 1)
+            #if use_classifier:
+            #    output_softmax = F.softmax(output[0], 1)
+            #    output_class = F.softmax(output[1], 1)
+            #else:
+            #    output_softmax = F.softmax(output[0], 1)
+
+            output_softmax = F.softmax(output[0], 1)
+            output_class = F.softmax(output[1], 1)
 
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
@@ -192,17 +198,14 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                         image_arr, mask=output_arr, overlay=output_arr, overlay_threshold=0.5, overlay_alpha=0.5)
                 plot_overlay = torch.from_numpy(np.array(overlayed_image))
 
-                plot_overlay.save(segmentations_path / f'image_{epoch}.png')
+                plot_overlay.save(segmentation_path / f'image_{epoch}.png')
                         
                 writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
-            new_batch_loss = [[output[idx], ground_truth[idx]] for idx in range(len(output))]
-            new_batch_loss = sum(new_batch_loss, [])  # unnest nested list
-            batch_losses = loss_fn(new_batch_loss[0], new_batch_loss[1])
-            #batch_losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
-            losses.append(batch_losses.sum().item()) #or losses_list?
+            batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]).to(args.device)
+            losses.append(batch_losses.sum().item())
 
             batch_dice = dice_fn(output_softmax[0, 1, ...], mask)
             dices.append(batch_dice.item())
