@@ -42,6 +42,8 @@ torch.backends.cudnn.benchmark = True
 
 
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
+    segmentation_path = pathlib.Path(cfg.EXP_DIR) / args.name / 'segmentations'
+    
     model.train()
     avg_loss = 0.
     avg_dice = 0.
@@ -79,6 +81,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             # writer.add_image('masks', mask_grid, 0)
             # writer.add_graph(model, images.detach().cpu())
             first_image = plot_2d(image_arr, mask=masks_arr)
+            first_image.save(segmentations_path / 'first_image.png')
+                        
             plot_overlay = torch.from_numpy(np.array(first_image))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
@@ -184,10 +188,12 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
                 plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
-                plot_overlay = torch.from_numpy(
-                    np.array(plot_2d(
-                        image_arr, mask=output_arr, overlay=output_arr, overlay_threshold=0.5, overlay_alpha=0.5)))
+                overlayed_image = plot_2d(
+                        image_arr, mask=output_arr, overlay=output_arr, overlay_threshold=0.5, overlay_alpha=0.5)
+                plot_overlay = torch.from_numpy(np.array(overlayed_image))
 
+                plot_overlay.save(segmentations_path / f'image_{epoch}.png')
+                        
                 writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
