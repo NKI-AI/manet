@@ -21,7 +21,7 @@ def read_metadata(dicom_fn):
     (0008,0070) - Manufacturer
     (0008,1090) - ManufacturerModelName
     """
-    dicom_obj = dicom.read_file(dicom_fn, stop_before_pixels=True)
+    dicom_obj = dicom.read_file(str(dicom_fn), stop_before_pixels=True)
     tags = ['Manufacturer', 'ManufacturerModelName']
     output = {tag: getattr(dicom_obj, tag, '').strip() for tag in tags}
     return output
@@ -35,12 +35,12 @@ def main():
         for study in dataset_description[patient]:
             for image_dict in dataset_description[patient][study]:
                 del image_dict['annotation']
-                image_fn = image_dict['image']
-                image_dict['mask'] = pathlib.Path(image_fn.parent) / str(image_fn.stem + '_mask.nrrd')
-                image_dict['metadata'] = read_metadata(image_fn)
+                image_fn = pathlib.Path(image_dict['image'])
+                image_dict['mask'] = str(pathlib.Path(image_fn.parent) / str(image_fn.stem + '_mask.nrrd'))
+                image_dict['metadata'] = read_metadata(args.input_dir / image_fn)
 
-    write_json(args.output_path, dataset_description)
-    print(f'Wrote description to {args.output_description}.')
+    write_json(args.output_path / 'dataset_description.json', dataset_description)
+    print(f'Wrote description to {args.output_path}.')
 
 
 def parse_args():
@@ -61,7 +61,7 @@ def parse_args():
         """)
 
     parser.add_argument(
-        'output_description', default=None, type=pathlib.Path,
+        'output_path', default=None, type=pathlib.Path,
         help="""Directory to write `dataset_description.json` to which describes the exported data structure.
 
         We assume a dictionary structure patient_id -> study_id -> [{'image': ..., 'annotation': ...}]
