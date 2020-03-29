@@ -1,4 +1,3 @@
-# encoding: utf-8
 """
 Copyright (c) Nikita Moriakov and Jonas Teuwen
 
