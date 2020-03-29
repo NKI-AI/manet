@@ -223,8 +223,7 @@ def build_model(device, use_classifier=False):
 
     return model
 
-
-def init_train_data(args, cfg, data_source, use_weights=True):
+def build_datasets(data_source):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     train_list = read_list(data_source / 'training_set.txt')
     validation_list = read_list(data_source / 'validation_set.txt')
@@ -234,6 +233,10 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
 
+    return training_description, validation_description
+
+
+def build_transforms():
     # Build datasets
     train_transforms = Compose([
         RandomLUT(),
@@ -249,24 +252,37 @@ def init_train_data(args, cfg, data_source, use_weights=True):
         CropAroundBbox((1, 1024, 1024))
     ])
 
-    train_set = MammoDataset(training_description, data_source, transform=train_transforms)
-    validation_set = MammoDataset(validation_description, data_source, transform=validation_transforms)
-    logger.info(f'Train dataset size: {len(train_set)}. '
-                f'Validation data size: {len(validation_set)}.')
+    return train_transforms, validation_transforms
 
+
+def build_samplers(training_set, validation_set, use_weights):
     # Build samplers
     # TODO: Build a custom sampler which can be set differently.
     is_distributed = cfg.MULTIGPU == 2
     if use_weights:
         train_sampler = build_sampler(
             # TODO: Weights
-            train_set, 'weighted_random', weights=None, is_distributed=is_distributed)
+            training_set, 'weighted_random', weights=None, is_distributed=is_distributed)
     else:
-        train_sampler = build_sampler(train_set, 'random', weights=False, is_distributed=is_distributed)
+        train_sampler = build_sampler(training_set, 'random', weights=False, is_distributed=is_distributed)
     validation_sampler = build_sampler(validation_set, 'sequential', weights=False, is_distributed=is_distributed)
 
+    return train_sampler, validation_sampler
+
+
+def init_train_data(args, cfg, data_source, use_weights=True):
+    training_description, validation_description = build_datasets(data_source)
+    train_transforms, validation_transforms = build_transforms()
+
+    training_set = MammoDataset(training_description, data_source, transform=train_transforms)
+    validation_set = MammoDataset(validation_description, data_source, transform=validation_transforms)
+    logger.info(f'Train dataset size: {len(training_set)}. '
+                f'Validation data size: {len(validation_set)}.')
+
+    train_sampler, validation_sampler = build_samplers(training_set, validation_set, use_weights)
+
     train_loader = DataLoader(
-        dataset=train_set,
+        dataset=training_set,
         batch_size=cfg.BATCH_SZ,
         sampler=train_sampler,
         num_workers=args.num_workers,
@@ -279,7 +295,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    return train_loader, train_sampler, train_set, eval_loader, validation_sampler
+    return train_loader, train_sampler, training_set, eval_loader, validation_sampler
 
 
 def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
