@@ -24,10 +24,10 @@ import pickle
 import SimpleITK as sitk
 
 from fexp.plotting import plot_2d
-from fexp.readers import read_mammogram
+from manet.data.readers import read_mammogram
 from fexp.utils.io import read_json
 from fexp.utils.bbox import crop_to_bbox
-from fexp.image import Image
+from manet.utils.image import Image
 from skimage.filters import threshold_otsu
 from skimage.morphology import remove_small_holes, remove_small_objects
 from skimage.morphology import convex_hull_image

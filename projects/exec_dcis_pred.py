@@ -26,7 +26,7 @@ from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
 from manet.data.transforms import CropAroundBbox, RandomShiftBbox, RandomFlipTransform
-from fexp.transforms import Compose, ClipAndScale
+from fexp.transforms import Compose, ClipAndScale, RandomLUT
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.unet.unet_classifier import UnetModel2dClassifier
 from manet.nn.training.sampler import build_sampler
@@ -236,6 +236,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
 
     # Build datasets
     train_transforms = Compose([
+        RandomLUT(),
         ClipAndScale(None, None, [0, 1]),
         RandomFlipTransform(0.5),
         RandomShiftBbox([100, 100]),
@@ -243,6 +244,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     ])
 
     validation_transforms = Compose([
+        RandomLUT(pick_sensible=True),
         ClipAndScale(None, None, [0, 1]),
         CropAroundBbox((1, 1024, 1024))
     ])

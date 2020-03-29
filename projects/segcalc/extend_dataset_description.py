@@ -18,16 +18,13 @@ from tqdm import tqdm
 def read_metadata(dicom_fn):
     """Extracts the following metadata:
 
-    (0028,1050) - WindowCenter
-    (0028,1051) - WindowWidth
     (0008,0070) - Manufacturer
     (0008,1090) - ManufacturerModelName
-    (0028,1056) - VOILUTFunction
-
     """
     dicom_obj = dicom.read_file(dicom_fn, stop_before_pixels=True)
-    tags = ['WindowCenter', 'WindowWidth', 'Manufacturer', 'ManufacturerModelName', 'VOILUTFunction']
-    return {tag: getattr(dicom_obj, tag, '').strip() for tag in tags}
+    tags = ['Manufacturer', 'ManufacturerModelName']
+    output = {tag: getattr(dicom_obj, tag, '').strip() for tag in tags}
+    return output
 
 
 def main():

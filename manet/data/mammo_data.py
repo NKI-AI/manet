@@ -11,6 +11,7 @@ import hashlib
 import numpy as np
 import zlib
 
+from manet.utils.readers import read_mammogram
 from torch.utils.data import Dataset
 from fexp.readers import read_image
 
@@ -116,18 +117,19 @@ class MammoDataset(Dataset):
 
         image_fn = self.data_root / data_dict['image_fn']
         label_fn = self.data_root / data_dict['label_fn']
-        bbox = data_dict['bbox']
 
-        image = read_image(image_fn, force_2d=True, no_metadata=True, dtype=np.float32)[np.newaxis, ...]
+        mammogram = read_mammogram(image_fn)[np.newaxis, ...]
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)
 
         sample = {
-            'image': image,
+            'mammogram': mammogram,
             'mask': mask,
-            'bbox': bbox,
             'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
             'label_fn': str(label_fn),
         }
+
+        if self.use_bounding_boxes:
+            sample['bbox'] = data_dict['bbox']
 
         if self.transform:
             sample = self.transform(sample)
