@@ -44,12 +44,6 @@ class MammoDataset(Dataset):
         self._cache_valid = True
         self.validate_cache()  # Pass
 
-        # for path in self.dataset_description:
-        #     self.logger.debug(f'Parsing directory {path}.')
-        #     list_of_images = self.dataset_description[path]
-        #     for image in list_of_images:
-        #         curr_data_dict = {'case_path': path}
-
         for path in self.dataset_description:
             self.logger.debug(f'Parsing directory {path}.')
             for image_dict in self.dataset_description[path]:
