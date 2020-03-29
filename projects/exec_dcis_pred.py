@@ -325,7 +325,7 @@ def main(args):
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
     cfg_from_file(args.cfg)
-    exp_path = os.path.join(cfg.EXP_DIR, args.name)
+    exp_path = args.experiment_directory / args.name
     if args.local_rank == 0:
         print('Creating directories.')
         os.makedirs(cfg.INPUT_DIR, exist_ok=True)

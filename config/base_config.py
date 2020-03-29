@@ -12,7 +12,6 @@ __C.DEBUG = False
 
 # Directory setup
 __C.INPUT_DIR = '../experiments'
-__C.EXP_DIR = '../experiments'
 __C.DATA_SOURCE = '../dataset/share'
 __C.LIST_DIR = '../dataset/share'
 
