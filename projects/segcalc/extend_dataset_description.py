@@ -32,8 +32,8 @@ def main():
     dataset_description = read_json(args.dataset_description)
 
     for patient in tqdm(dataset_description):
-        for study in patient:
-            for image_dict in study:
+        for study in dataset_description[patient]:
+            for image_dict in dataset_description[patient][study]:
                 del image_dict['annotation']
                 image_fn = image_dict['image']
                 image_dict['mask'] = pathlib.Path(image_fn.parent) / str(image_fn.stem + '_mask.nrrd')
