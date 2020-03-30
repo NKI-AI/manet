@@ -21,6 +21,8 @@ class Args(argparse.ArgumentParser):
         """
 
         super().__init__(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        self.add_argument('data_source', type=pathlib.Path, help='Path to the dataset')
+        self.add_argument('experiment_directory',  type=pathlib.Path, help='Path to the experiment directory')
         self.add_argument('--debug', action='store_true', help='If set debug output will be shown')
         self.add_argument('--local_rank', dest='local_rank', help='Which is the local GPU. Set by init script.',
                             type=int, default=0)
@@ -31,7 +33,6 @@ class Args(argparse.ArgumentParser):
         self.add_argument('--cfg', help='Config file for training (and optionally testing)', required=True, type=str)
         self.add_argument('--checkpoint', type=pathlib.Path,
                           help='Path to an existing checkpoint. Used optionally along with "--resume"')
-        self.add_argument('--data-source', type=pathlib.Path, default='/data', help='Path to the dataset')
         self.add_argument('--name', help='Run name, if None use config name.', default=None, type=str)
         self.add_argument('--no-rsync', dest='no_rsync', help='use symbolic links instead', action='store_true')
         self.add_argument('--baseline', help='load baseline', action='store_true')

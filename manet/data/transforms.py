@@ -8,10 +8,50 @@ LICENSE file in the root directory of this source tree.
 import numpy as np
 import cv2
 from skimage.transform import rescale, rotate
+from manet.utils.image import clip_and_scale
 from config.base_config import cfg
 from manet.utils.bbox import combine_bbox
 
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
+
+
+# TODO: fexp
+class Compose(object):
+    """Compose several transforms together. For instance, normalization combined with a flip
+    """
+    def __init__(self, transforms):
+        self.transforms = transforms
+
+    def __call__(self, sample):
+        for transform in self.transforms:
+            sample = transform(sample)
+        return sample
+
+    def __repr__(self):
+        repr_string = self.__class__.__name__ + '('
+        for transform in self.transforms:
+            repr_string += '\n'
+            repr_string += f'    {transform}'
+        repr_string += '\n)'
+        return repr_string
+
+
+# TODO: fexp
+class ClipAndScale(object):
+    """Clip input array and rescale image data.
+    """
+
+    def __init__(self, clip_range, source_interval, target_interval):
+        self.clip_range = clip_range
+        self.source_interval = source_interval
+        self.target_interval = target_interval
+
+    def apply_transform(self, data):
+        return clip_and_scale(data, self.clip_range, self.source_interval, self.target_interval)
+
+    def __call__(self, sample):
+        sample['image'] = self.apply_transform(sample['image'])
+        return sample
 
 
 class RandomRotation(object):
@@ -120,6 +160,21 @@ class RandomGaussianNoise(object):
         return x * (1.0 + np.random.randn(*x.shape).astype(np.float32) * self.std)
 
 
+class RandomShiftTransform(object):
+    def __init__(self, **kwargs):
+        self.mask = True
+        delta = kwargs.get('delta', 32)
+        dim = kwargs.get('dim', 3)
+        ignore_dim = kwargs.get('ignore_dim', 0)
+        self.delta = np.random.randint(1 - delta, high=delta, size=dim)
+        if ignore_dim is not None:
+            self.delta[ignore_dim] = 0
+
+    def apply(self, x):
+        bbox = combine_bbox(self.delta, x.shape)
+        return crop_to_bbox(x, bbox)
+
+
 class RandomZoomTransform(object):
     def __init__(self, **kwargs):
         self.mask = True
@@ -189,3 +244,30 @@ class RandomElasticTransform(object):
                                        borderMode=cv2.BORDER_REFLECT_101, interpolation=cv2.INTER_LINEAR)*255.0 for i in
                              range(x.shape[0])]
             return np.stack(np.rint(out_stack), axis=0).astype(x.dtype)
+
+
+class RandomFlipTransform(object):
+    def __init__(self):
+        self.mask = True
+        self.axis = -1
+        self.do_flip = (np.random.random_sample() < 0.5)
+
+    def apply(self, x):
+        if self.do_flip:
+            return np.flip(x, axis=self.axis)
+        else:
+            return x
+
+
+class RandomFlipTransformExt(object):
+    def __init__(self):
+        idx = np.random.choice(len(cfg.UNET.FLIP_AXIS), 1)[0]
+        self.mask = cfg.UNET.FLIP_MASK[idx]
+        self.axis = cfg.UNET.FLIP_AXIS[idx]
+        self.do_flip = np.random.random_sample() < 0.5
+
+    def apply(self, x):
+        if self.do_flip:
+            return np.flip(x, axis=self.axis)
+        else:
+            return x
