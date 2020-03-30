@@ -25,7 +25,7 @@ from manet.nn.training.lr_scheduler import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
-from manet.data.transforms import CropAroundBbox, RandomLUT, RandomShiftBbox, RandomFlipTransform
+from manet.data.transforms import CropAroundBbox, RandomShiftBbox, RandomFlipTransform
 from fexp.transforms import Compose, ClipAndScale
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.unet.unet_classifier import UnetModel2dClassifier
@@ -43,7 +43,7 @@ torch.backends.cudnn.benchmark = True
 
 
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
-    #segmentation_path = pathlib.Path(cfg.EXP_DIR) / args.name / 'segmentations'
+    segmentation_path = pathlib.Path(cfg.EXP_DIR) / args.name / 'segmentations'
     
     model.train()
     avg_loss = 0.
@@ -83,9 +83,9 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             # writer.add_graph(model, images.detach().cpu())
 
             first_image = plot_2d(image_arr, mask=masks_arr)
-            #first_image.save(segmentation_path / 'first_image.png')
+            first_image.save(segmentation_path / 'first_image.png')
                         
-            #plot_overlay = torch.from_numpy(np.array(first_image))
+            plot_overlay = torch.from_numpy(np.array(first_image))
             #plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
@@ -241,7 +241,7 @@ def build_model(device, use_classifier=False):
 
     return model
 
-def build_datasets(data_source):
+def init_train_data(args, cfg, data_source, use_weights=True):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     train_list = read_list(data_source / 'training_set.txt')
     validation_list = read_list(data_source / 'validation_set.txt')
@@ -251,10 +251,6 @@ def build_datasets(data_source):
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
 
-    return training_description, validation_description
-
-
-def build_transforms():
     # Build datasets
     train_transforms = Compose([
         ClipAndScale(None, None, [0, 1]),
@@ -268,37 +264,24 @@ def build_transforms():
         CropAroundBbox((1, 1024, 1024))
     ])
 
-    return train_transforms, validation_transforms
+    train_set = MammoDataset(training_description, data_source, transform=train_transforms, cache_dir='/tmp/train')
+    validation_set = MammoDataset(validation_description, data_source, transform=train_transforms, cache_dir='/tmp/validate')
+    logger.info(f'Train dataset size: {len(train_set)}. '
+                f'Validation data size: {len(validation_set)}.')
 
-
-def build_samplers(training_set, validation_set, use_weights):
     # Build samplers
     # TODO: Build a custom sampler which can be set differently.
     is_distributed = cfg.MULTIGPU == 2
     if use_weights:
         train_sampler = build_sampler(
             # TODO: Weights
-            training_set, 'weighted_random', weights=None, is_distributed=is_distributed)
+            train_set, 'weighted_random', weights=None, is_distributed=is_distributed)
     else:
-        train_sampler = build_sampler(training_set, 'random', weights=False, is_distributed=is_distributed)
+        train_sampler = build_sampler(train_set, 'random', weights=False, is_distributed=is_distributed)
     validation_sampler = build_sampler(validation_set, 'sequential', weights=False, is_distributed=is_distributed)
 
-    return train_sampler, validation_sampler
-
-
-def init_train_data(args, cfg, data_source, use_weights=True):
-    training_description, validation_description = build_datasets(data_source)
-    train_transforms, validation_transforms = build_transforms()
-
-    training_set = MammoDataset(training_description, data_source, transform=train_transforms, cache_dir='/tmp/train')
-    validation_set = MammoDataset(validation_description, data_source, transform=train_transforms, cache_dir='/tmp/validate')
-    logger.info(f'Train dataset size: {len(training_set)}. '
-                f'Validation data size: {len(validation_set)}.')
-
-    train_sampler, validation_sampler = build_samplers(training_set, validation_set, use_weights)
-
     train_loader = DataLoader(
-        dataset=training_set,
+        dataset=train_set,
         batch_size=cfg.BATCH_SZ,
         sampler=train_sampler,
         num_workers=args.num_workers,
@@ -311,7 +294,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    return train_loader, train_sampler, training_set, eval_loader, validation_sampler
+    return train_loader, train_sampler, train_set, eval_loader, validation_sampler
 
 
 def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
@@ -357,7 +340,7 @@ def main(args):
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
     cfg_from_file(args.cfg)
-    exp_path = args.experiment_directory / args.name
+    exp_path = os.path.join(cfg.EXP_DIR, args.name)
     if args.local_rank == 0:
         print('Creating directories.')
         os.makedirs(cfg.INPUT_DIR, exist_ok=True)
