@@ -32,7 +32,7 @@ from manet.nn.unet.unet_classifier import UnetModel2dClassifier
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
-from fexp.plotting import plot_2d
+from manet.utils.plotting import plot_2d
 
 import torch.nn.functional as F
 
@@ -40,7 +40,6 @@ from fexp.utils.io import read_list, read_json
 
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
-
 
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
     segmentation_path = pathlib.Path(cfg.EXP_DIR) / args.name / 'segmentations'
@@ -51,6 +50,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
     loss_fn = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
+    #loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
@@ -59,7 +59,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         loss_fn += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
 
     for iter_idx, batch in enumerate(data_loader):
-        images = batch['image'].to(args.device)
+        images = batch['mammogram'].to(args.device)
         masks = batch['mask'].to(args.device)
 
         ground_truth = [masks]
@@ -90,16 +90,17 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
         train_loss = torch.tensor(0.).to(args.device)
-        print(torch.cuda.memory_allocated() / (1024 ** 3))
         output = model(images)
-        print(torch.cuda.memory_allocated() / (1024 ** 3))
+        #train_loss += loss_fn(output, masks)
 
         if not isinstance(output, (list, tuple)):
             output = [output]
 
-        losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]).to(args.device)
-        losses.requires_grad_(True)
+        #losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]).to(args.device)
+        losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
+        #losses.requires_grad_(True)
         train_loss += losses.sum()
+        train_loss.requires_grad_(True)
 
         # Backprop the loss, use APEX if necessary
         if cfg.APEX >= 0:
@@ -137,15 +138,15 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 writer.add_scalar(key, metric_dict[key].item(), global_step + iter_idx)
                 writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step + iter_idx)
 
-        loss_str = f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
-        for loss_idx, loss in enumerate(losses):
-            loss_str += f'Loss_{loss_idx} = {loss.item():.4g} '
+        #loss_str = f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
+        #for loss_idx, loss in enumerate(losses):
+        #    loss_str += f'Loss_{loss_idx} = {loss.item():.4g} '
 
         if iter_idx % cfg.REPORT_INTERVAL == 0:
             logger.info(
                 f'Ep = [{epoch:3d}/{cfg.N_EPOCHS:3d}] '
                 f'It = [{iter_idx:4d}/{len(data_loader):4d}] '
-                f'{loss_str}'
+         #       f'{loss_str}'
                 f'Dice = {train_dice.item():.4g} Avg DICE = {avg_dice:.4g} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
                 f'GPU {args.local_rank} '
