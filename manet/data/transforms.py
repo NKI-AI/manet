@@ -124,10 +124,9 @@ class RandomLUT:
                     dicom_cw_idx = np.random.choice(num_center_widths)
                 dicom_window = [mammogram.dicom_window_center[dicom_cw_idx], mammogram.dicom_window_width[dicom_cw_idx]]
                 dicom_window += np.random.uniform(size=2) * self.window_jitter_percentage
-                mammogram.set_center_width(*dicom_window)
             else:
                 dicom_window = [mammogram.dicom_window_center[0], mammogram.dicom_window_width[0]]
-                mammogram.set_center_width(*dicom_window)
+            mammogram.set_center_width(*dicom_window)
 
         sample['image'] = mammogram.image[np.newaxis, ...]
 

@@ -143,7 +143,8 @@ class MammogramImage(Image):
     @property
     def image(self):
         if self._current_set_lut is not None and self._current_set_center_width is not None:
-            warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results.')
+            warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results. '
+                          f'Got {self._current_set_lut} and {self._current_set_center_width} for {self.data_origin}.')
 
         if self._current_set_lut is not None:
             _, lut_data, len_lut, first_value = self.dicom_luts[self._current_set_lut]

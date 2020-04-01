@@ -67,7 +67,6 @@ def read_mammogram(filename):
             needs_horizontal_flip = True
 
     if needs_horizontal_flip:
-        logger.info(f'{filename} requires a flip.')
         image = np.ascontiguousarray(np.fliplr(image))
 
     # TODO: These metadata tags are not necessarily required when reading mammograms, add extra flag to read_image.
