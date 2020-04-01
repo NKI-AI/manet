@@ -68,14 +68,14 @@ class MammogramImage(Image):
         explanation = self.header['dicom_tags'][DICOM_WINDOW_CENTER_WIDTH_EXPLANATION]
 
         if window_center and window_width:
-            self.dicom_window_center = [float(_) for _ in window_center.split('/')]
-            self.dicom_window_width = [float(_) for _ in window_width.split('/')]
+            self.dicom_window_center = [float(_) for _ in window_center.split('\\')]
+            self.dicom_window_width = [float(_) for _ in window_width.split('\\')]
             if not len(self.dicom_window_width) == len(self.dicom_window_center):
                 raise ValueError(f'Number of widths and center mismatch.')
             self.num_dicom_center_widths = len(self.dicom_window_width)
 
         if explanation:
-            self.dicom_center_width_explanation = [_.strip() for _ in explanation.split('/')]
+            self.dicom_center_width_explanation = [_.strip() for _ in explanation.split('\\')]
 
         if self.voi_lut_function == 'SIGMOID':
             # In this case, window and center always need to be set.
