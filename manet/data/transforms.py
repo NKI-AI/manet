@@ -128,7 +128,7 @@ class RandomLUT:
             else:
                 dicom_window = [mammogram.dicom_window_center[0], mammogram.dicom_window_width[0]]
                 mammogram.set_center_width(*dicom_window)
-                
+
         sample['image'] = mammogram.image
 
         return sample

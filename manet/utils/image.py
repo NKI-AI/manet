@@ -9,6 +9,7 @@ import numpy as np
 import pydicom
 from manet.utils.dicom import DICOM_WINDOW_CENTER, DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, \
     build_dicom_lut
+from fexp.utils.image import clip_and_scale
 
 
 class Image:
@@ -147,9 +148,9 @@ class MammogramImage(Image):
         if self._current_set_lut is not None:
             _, lut_data, len_lut, first_value = self.dicom_luts[self._current_set_lut]
             LUT = build_dicom_lut(self._uniques, lut_data, len_lut, first_value)
-            self._image = LUT[self.raw_image]
+            self._image = clip_and_scale(LUT[self.raw_image], None, None, self._output_range)
         else:
-            self._image = self.raw_image
+            self._image = clip_and_scale(self.raw_image, None, None, self._output_range)
 
         if all(self._current_set_center_width):
             if self.voi_lut_function == 'LINEAR':
@@ -157,7 +158,8 @@ class MammogramImage(Image):
             elif self.voi_lut_function == 'LINEAR_EXACT':
                 self._image = self._apply_linear_exact(self._image, *self._current_set_center_width)
             elif self.voi_lut_function == 'SIGMOID':
-                self._image = self._apply_sigmoid(self._image, *self._current_set_center_width)
+                self._image = clip_and_scale(
+                    self._apply_sigmoid(self._image, *self._current_set_center_width), None, None, self._output_range)
             else:
                 raise ValueError(f'VOI LUT Function {self.voi_lut_function} is not supported by the DICOM standard.')
 
