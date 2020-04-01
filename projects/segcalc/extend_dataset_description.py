@@ -25,8 +25,21 @@ def read_metadata(dicom_fn):
     dicom_obj = dicom.read_file(str(dicom_fn), stop_before_pixels=True)
     tags = ['Manufacturer', 'ManufacturerModelName', 'VOILUTFunction']
     output = {tag: getattr(dicom_obj, tag, '').strip() for tag in tags}
-    return output
+    if hasattr(dicom_obj, 'WindowCenter') and hasattr(dicom_obj, 'WindowWidth'):
+        if type(dicom_obj.WindowCenter) == dicom.multival.MultiValue:
+            output['WindowCenter'] = list(dicom_obj.WindowCenter)
+            output['WindowWidth'] = list(dicom_obj.WindowWidth)
+        else:
+            output['WindowCenter'] = float(dicom_obj.WindowCenter)
+            output['WindowWidth'] = float(dicom_obj.WindowWidth)
+    if hasattr(dicom_obj, 'VOILUTSequence'):
+        output['VOILUTSequence'] = len(dicom_obj.VOILUTSequence)
+        #sequences = {}
+        #for elem in range(0, len(dicom_obj.VOILUTSequence)):
+        #    sequences[elem] = dict(dicom_obj.VOILUTSequence[elem])
+        #output['VOILUTSequence'] = sequences
 
+    return output
 
 def main():
     args = parse_args()
