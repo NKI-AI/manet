@@ -9,7 +9,7 @@ import numpy as np
 import pydicom
 from manet.utils.dicom import DICOM_WINDOW_CENTER, DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, \
     build_dicom_lut
-from fexp.utils.image import clip_and_scale
+from fexp.image import clip_and_scale
 
 
 class Image:
@@ -86,7 +86,7 @@ class MammogramImage(Image):
 
     def _parse_luts(self):
         # SimpleITK does not yet support sequence tags, therefore read with pydicom.
-        dcm = pydicom.read_file(self.data_origin, stop_before_pixels=True)
+        dcm = pydicom.read_file(str(self.data_origin), stop_before_pixels=True)
         if not self._uniques:
             self._uniques = np.unique(self.raw_image)
         voi_lut_sequence = getattr(dcm, 'VOILUTSequence', [])
@@ -102,7 +102,7 @@ class MammogramImage(Image):
 
             self.dicom_luts.append((lut_explanation, lut_data, len_lut, first_value))
 
-    def select_lut(self, idx):
+    def set_lut(self, idx):
         if idx is not None and (idx < 0 or idx >= len(self.dicom_luts)):
             raise ValueError(f'Incorrect LUT index. Got {idx}.')
         self._current_set_lut = idx

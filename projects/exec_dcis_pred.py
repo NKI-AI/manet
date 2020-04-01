@@ -13,6 +13,7 @@ import logging
 import time
 import torch
 import apex
+import random
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
@@ -41,6 +42,10 @@ from fexp.utils.io import read_list, read_json
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
 
+np.random.seed(314)
+random.seed(314)
+torch.manual_seed(314)
+
 
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
     model.train()
@@ -68,7 +73,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             logger.info(f'Logging first batch to Tensorboard.')
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
-            logger.info(f"BoundingBox: {batch['bbox']}")
 
             image_arr = images.detach().cpu()[0, 0, ...]
             masks_arr = masks.detach().cpu()[0, ...]
@@ -223,6 +227,7 @@ def build_model(device, use_classifier=False):
 
     return model
 
+
 def build_datasets(data_source):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     train_list = read_list(data_source / 'training_set.txt')
@@ -240,15 +245,15 @@ def build_transforms():
     # Build datasets
     train_transforms = Compose([
         RandomLUT(),
-        ClipAndScale(None, None, [0, 1]),
+        # ClipAndScale(None, None, [0, 1]),
         RandomFlipTransform(0.5),
         RandomShiftBbox([100, 100]),
         CropAroundBbox((1, 1024, 1024))
     ])
 
     validation_transforms = Compose([
-        RandomLUT(pick_sensible=True),
-        ClipAndScale(None, None, [0, 1]),
+        RandomLUT(),
+        # ClipAndScale(None, None, [0, 1]),
         CropAroundBbox((1, 1024, 1024))
     ])
 
@@ -336,9 +341,6 @@ def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
 
 
 def main(args):
-    np.seed(314)
-    torch.seed(314)
-
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')

@@ -106,7 +106,7 @@ class RandomLUT:
         mammogram = sample['mammogram']
         del sample['mammogram']
         num_dicom_luts = mammogram.num_dicom_luts
-        num_center_widths = mammogram.num_center_widths
+        num_center_widths = mammogram.num_dicom_center_widths
         voi_lut_function = mammogram.voi_lut_function
 
         if num_dicom_luts > 0 and voi_lut_function != 'SIGMOID':
@@ -129,6 +129,6 @@ class RandomLUT:
                 dicom_window = [mammogram.dicom_window_center[0], mammogram.dicom_window_width[0]]
                 mammogram.set_center_width(*dicom_window)
 
-        sample['image'] = mammogram.image
+        sample['image'] = mammogram.image[np.newaxis, ...]
 
         return sample
