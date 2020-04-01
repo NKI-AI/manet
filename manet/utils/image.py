@@ -9,7 +9,7 @@ import numpy as np
 import pydicom
 from manet.utils.dicom import DICOM_WINDOW_CENTER, DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, \
     build_dicom_lut
-from fexp.utils.image import clip_and_scale
+from fexp.image import clip_and_scale
 
 
 class Image:
