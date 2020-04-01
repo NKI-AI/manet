@@ -51,12 +51,14 @@ class MammogramImage(Image):
         # Window leveling
         self._output_range = (0.0, 1.0)
         self._current_set_center_width = [None, None]
+        self.num_dicom_center_widths = 0
         self._parse_window_level()
 
         # LUTs
         self._uniques = None
         self._current_set_lut = None
         self.dicom_luts = []
+        self.num_dicom_luts = 0
         self._parse_luts()
 
     def _parse_window_level(self):
@@ -67,6 +69,9 @@ class MammogramImage(Image):
         if window_center and window_width:
             self.dicom_window_center = [float(_) for _ in window_center.split('/')]
             self.dicom_window_width = [float(_) for _ in window_width.split('/')]
+            if not len(self.dicom_window_width) == len(self.dicom_window_center):
+                raise ValueError(f'Number of widths and center mismatch.')
+            self.num_dicom_center_widths = len(self.dicom_window_width)
 
         if explanation:
             self.dicom_center_width_explanation = [_.strip() for _ in explanation.split('/')]
@@ -86,6 +91,7 @@ class MammogramImage(Image):
         voi_lut_sequence = getattr(dcm, 'VOILUTSequence', [])
 
         for voi_lut in voi_lut_sequence:
+            self.num_dicom_luts += 1
             lut_descriptor = list(voi_lut.LUTDescriptor)
             lut_explanation = voi_lut.LUTExplanation
             lut_data = list(voi_lut.LUTData)

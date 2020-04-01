@@ -336,6 +336,9 @@ def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
 
 
 def main(args):
+    np.seed(314)
+    torch.seed(314)
+
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')

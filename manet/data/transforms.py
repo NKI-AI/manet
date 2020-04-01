@@ -93,23 +93,42 @@ class RandomGaussianNoise:
 
 class RandomLUT:
     """
-    Applies a random lookup table or window level for mammograms
+    Applies a random lookup table or window level for mammograms.
+
+    When a SIGMOID is set as VOILUTFunction, we can select a random window level and no LUT.
     """
 
-    def __init__(self, pick_sensible=False):
+    def __init__(self, pick_sensible=False, window_jitter_percentage=(0.05, 0.05)):
         self.pick_sensible = pick_sensible
+        self.window_jitter_percentage = window_jitter_percentage
 
     def __call__(self, sample):
         mammogram = sample['mammogram']
         del sample['mammogram']
+        num_dicom_luts = mammogram.num_dicom_luts
+        num_center_widths = mammogram.num_center_widths
+        voi_lut_function = mammogram.voi_lut_function
 
-        if mammogram.voi_lut_function == 'SIGMOID':
-            # Only augment window-level values
-            pass
+        if num_dicom_luts > 0 and voi_lut_function != 'SIGMOID':
+            if self.pick_sensible:
+                mammogram.set_lut(0)
+            else:
+                random_lut_idx = np.random.choice(num_dicom_luts)
+                mammogram.set_lut(random_lut_idx)
         else:
-            # Randomly select LUT and Window-level.
-            pass
-
+            mammogram.set_lut(None)
+            if not self.pick_sensible:
+                if voi_lut_function == 'SIGMOID':
+                    dicom_cw_idx = 0
+                else:
+                    dicom_cw_idx = np.random.choice(num_center_widths)
+                dicom_window = [mammogram.dicom_window_center[dicom_cw_idx], mammogram.dicom_window_width[dicom_cw_idx]]
+                dicom_window += np.random.uniform(size=2) * self.window_jitter_percentage
+                mammogram.set_center_width(*dicom_window)
+            else:
+                dicom_window = [mammogram.dicom_window_center[0], mammogram.dicom_window_width[0]]
+                mammogram.set_center_width(*dicom_window)
+                
         sample['image'] = mammogram.image
 
         return sample
