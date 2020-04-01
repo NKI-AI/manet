@@ -70,10 +70,13 @@ def read_mammogram(filename):
         logger.info(f'{filename} requires a flip.')
         image = np.ascontiguousarray(np.fliplr(image))
 
+    # TODO: These metadata tags are not necessarily required when reading mammograms, add extra flag to read_image.
+    # TODO: This needs to be done upstream in fexp.
     del metadata['depth']
     del metadata['direction']
     del metadata['origin']
 
+    # TODO: Move to MammogramImage
     voi_lut_function = dicom_tags[DICOM_VOI_LUT_FUNCTION] if dicom_tags[DICOM_VOI_LUT_FUNCTION] else 'LINEAR'
 
     return MammogramImage(image, filename, metadata, voi_lut_function=voi_lut_function,

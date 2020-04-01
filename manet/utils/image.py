@@ -4,15 +4,13 @@ Copyright (c) Nikita Moriakov and Jonas Teuwen
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
-
-
+import warnings
+import numpy as np
 import pydicom
 from manet.utils.dicom import DICOM_WINDOW_CENTER, DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, \
     build_dicom_lut
-import numpy as np
-import logging
+from fexp.utils.image import clip_and_scale
 
-logger = logging.getLogger(__name__)
 
 class Image:
     """
@@ -54,12 +52,14 @@ class MammogramImage(Image):
         # Window leveling
         self._output_range = (0.0, 1.0)
         self._current_set_center_width = [None, None]
+        self.num_dicom_center_widths = 0
         self._parse_window_level()
 
         # LUTs
         self._uniques = None
         self._current_set_lut = None
         self.dicom_luts = []
+        self.num_dicom_luts = 0
         self._parse_luts()
 
     def _parse_window_level(self):
@@ -70,6 +70,9 @@ class MammogramImage(Image):
         if window_center and window_width:
             self.dicom_window_center = [float(_) for _ in window_center.split('/')]
             self.dicom_window_width = [float(_) for _ in window_width.split('/')]
+            if not len(self.dicom_window_width) == len(self.dicom_window_center):
+                raise ValueError(f'Number of widths and center mismatch.')
+            self.num_dicom_center_widths = len(self.dicom_window_width)
 
         if explanation:
             self.dicom_center_width_explanation = [_.strip() for _ in explanation.split('/')]
@@ -86,19 +89,18 @@ class MammogramImage(Image):
         dcm = pydicom.read_file(str(self.data_origin), stop_before_pixels=True)
         if not self._uniques:
             self._uniques = np.unique(self.raw_image)
-        try:
-            for voi_lut in dcm.VOILUTSequence:
-                lut_descriptor = list(voi_lut.LUTDescriptor)
-                lut_explanation = voi_lut.LUTExplanation
-                lut_data = list(voi_lut.LUTData)
-                len_lut = lut_descriptor[0] if not lut_descriptor[0] == 0 else 2 ** 16
-                first_value = lut_descriptor[1]  # TODO: This assumes that mammograms are always unsigned integers.
-                # number_of_bits_lut_data = lut_descriptor[2]
-            self.dicom_luts.append((lut_explanation, lut_data, len_lut, first_value))
-        except AttributeError:
-            logger.info(f'DICOM has no Attribute VOILUTSequence. Skipping')
-            pass
+        voi_lut_sequence = getattr(dcm, 'VOILUTSequence', [])
 
+        for voi_lut in voi_lut_sequence:
+            self.num_dicom_luts += 1
+            lut_descriptor = list(voi_lut.LUTDescriptor)
+            lut_explanation = voi_lut.LUTExplanation
+            lut_data = list(voi_lut.LUTData)
+            len_lut = lut_descriptor[0] if not lut_descriptor[0] == 0 else 2 ** 16
+            first_value = lut_descriptor[1]  # TODO: This assumes that mammograms are always unsigned integers.
+            # number_of_bits_lut_data = lut_descriptor[2]
+
+            self.dicom_luts.append((lut_explanation, lut_data, len_lut, first_value))
 
     def select_lut(self, idx):
         if idx is not None and (idx < 0 or idx >= len(self.dicom_luts)):
@@ -108,6 +110,9 @@ class MammogramImage(Image):
     def set_center_width(self, window_center, window_width):
         if window_width <= 0:
             raise ValueError(f'window width should be larger than 0. Got {window_width}.')
+        if not window_center or not window_width:
+            raise ValueError(f'center and width should both be set.')
+
         self._current_set_center_width = [window_center, window_width]
 
     def _apply_sigmoid(self, image, window_center, window_width):
@@ -137,13 +142,15 @@ class MammogramImage(Image):
 
     @property
     def image(self):
-        # First read the LUT, then apply window leveling
+        if self._current_set_lut is not None and self._current_set_center_width is not None:
+            warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results.')
+
         if self._current_set_lut is not None:
             _, lut_data, len_lut, first_value = self.dicom_luts[self._current_set_lut]
             LUT = build_dicom_lut(self._uniques, lut_data, len_lut, first_value)
-            self._image = LUT[self.raw_image]
+            self._image = clip_and_scale(LUT[self.raw_image], None, None, self._output_range)
         else:
-            self._image = self.raw_image
+            self._image = clip_and_scale(self.raw_image, None, None, self._output_range)
 
         if all(self._current_set_center_width):
             if self.voi_lut_function == 'LINEAR':
@@ -151,7 +158,8 @@ class MammogramImage(Image):
             elif self.voi_lut_function == 'LINEAR_EXACT':
                 self._image = self._apply_linear_exact(self._image, *self._current_set_center_width)
             elif self.voi_lut_function == 'SIGMOID':
-                self._image = self._apply_sigmoid(self._image, *self._current_set_center_width)
+                self._image = clip_and_scale(
+                    self._apply_sigmoid(self._image, *self._current_set_center_width), None, None, self._output_range)
             else:
                 raise ValueError(f'VOI LUT Function {self.voi_lut_function} is not supported by the DICOM standard.')
 
