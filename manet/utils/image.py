@@ -4,8 +4,8 @@ Copyright (c) Nikita Moriakov and Jonas Teuwen
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
-
-
+import warnings
+import numpy as np
 import pydicom
 from manet.utils.dicom import DICOM_WINDOW_CENTER, DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, \
     build_dicom_lut
@@ -83,8 +83,9 @@ class MammogramImage(Image):
         dcm = pydicom.read_file(self.data_origin, stop_before_pixels=True)
         if not self._uniques:
             self._uniques = np.unique(self.raw_image)
+        voi_lut_sequence = getattr(dcm, 'VOILUTSequence', [])
 
-        for voi_lut in dcm.VOILUTSequence:
+        for voi_lut in voi_lut_sequence:
             lut_descriptor = list(voi_lut.LUTDescriptor)
             lut_explanation = voi_lut.LUTExplanation
             lut_data = list(voi_lut.LUTData)
@@ -102,6 +103,9 @@ class MammogramImage(Image):
     def set_center_width(self, window_center, window_width):
         if window_width <= 0:
             raise ValueError(f'window width should be larger than 0. Got {window_width}.')
+        if not window_center or not window_width:
+            raise ValueError(f'center and width should both be set.')
+
         self._current_set_center_width = [window_center, window_width]
 
     def _apply_sigmoid(self, image, window_center, window_width):
@@ -131,7 +135,9 @@ class MammogramImage(Image):
 
     @property
     def image(self):
-        # First read the LUT, then apply window leveling
+        if self._current_set_lut is not None and self._current_set_center_width is not None:
+            warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results.')
+
         if self._current_set_lut is not None:
             _, lut_data, len_lut, first_value = self.dicom_luts[self._current_set_lut]
             LUT = build_dicom_lut(self._uniques, lut_data, len_lut, first_value)
