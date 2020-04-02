@@ -50,6 +50,9 @@ class RandomFlipTransform:
         if not np.random.random_sample() < self.probability:
             return sample
 
+        if 'bbox' in sample:
+            raise NotImplementedError
+
         sample['image'] = np.flip(sample['image'], axis=self.axis)
         if 'mask' in sample:
             sample['mask'] = np.flip(sample['mask'], axis=self.axis)

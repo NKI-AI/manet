@@ -251,9 +251,9 @@ def build_transforms():
     train_transforms = Compose([
         RandomLUT(),
         # ClipAndScale(None, None, [0, 1]),
-        RandomFlipTransform(0.5),
         RandomShiftBbox([100, 100]),
-        CropAroundBbox((1, 1024, 1024))
+        CropAroundBbox((1, 1024, 1024)),
+        RandomFlipTransform(0.5),
     ])
 
     validation_transforms = Compose([
