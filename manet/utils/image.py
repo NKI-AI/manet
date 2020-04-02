@@ -8,7 +8,7 @@ import warnings
 import numpy as np
 import pydicom
 from manet.utils.dicom import DICOM_WINDOW_CENTER, DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, \
-    DICOM_PHOTOMETRIC_INTERPRETATION, build_dicom_lut
+    DICOM_PHOTOMETRIC_INTERPRETATION, DICOM_MANUFACTURER, build_dicom_lut
 from fexp.image import clip_and_scale
 
 
@@ -56,6 +56,9 @@ class MammogramImage(Image):
         self._output_range = (0.0, 1.0)
         self._current_set_center_width = [None, None]
         self.num_dicom_center_widths = 0
+        self.dicom_window_center = []
+        self.dicom_window_width = []
+
         self._parse_window_level()
 
         # LUTs
@@ -147,6 +150,17 @@ class MammogramImage(Image):
 
     @property
     def image(self):
+        # MONOCHROME1 handling
+        if self.photometric_interpretation == 'MONOCHROME1':
+            image_max = self.raw_image.max()
+            self._image = image_max - self.raw_image
+            if self.header[DICOM_MANUFACTURER] == 'Agfa-Gevaert':
+                if self.num_dicom_center_widths == 0:
+                    self.dicom_window_center = [image_max / 2]
+                    self.dicom_window_width = [image_max]
+            else:
+                raise NotImplementedError
+
         if self._current_set_lut is not None and any([_ is not None for _ in self._current_set_center_width]):
             warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results. '
                           f'Got {self._current_set_lut} and {self._current_set_center_width} for {self.data_origin}.')
