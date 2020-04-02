@@ -81,7 +81,9 @@ class MammogramImage(Image):
             # In this case, window and center always need to be set.
             if not (len(self.dicom_window_center) == 1 and len(self.dicom_window_width) == 1):
                 raise ValueError(f'If VOILUTFunction is set to `SIGMOID`, '
-                                 f'tags {DICOM_WINDOW_CENTER} and {DICOM_WINDOW_WIDTH} need to be set with one value.')
+                                 f'tags {DICOM_WINDOW_CENTER} and {DICOM_WINDOW_WIDTH} need to be set with one value. '
+                                 f'Got {self.dicom_window_center} and {self.dicom_window_width} for'
+                                 f' {self.data_origin}.')
             self._current_set_center_width = [self.dicom_window_center[0], self.dicom_window_width[0]]
 
     def _parse_luts(self):
