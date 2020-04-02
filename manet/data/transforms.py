@@ -53,9 +53,9 @@ class RandomFlipTransform:
         if 'bbox' in sample:
             raise NotImplementedError
 
-        sample['image'] = np.flip(sample['image'], axis=self.axis)
+        sample['image'] = np.flip(sample['image'], axis=self.axis).copy()  # Fix once torch supports negative strides.
         if 'mask' in sample:
-            sample['mask'] = np.flip(sample['mask'], axis=self.axis)
+            sample['mask'] = np.flip(sample['mask'], axis=self.axis).copy()  # Fix once torch supports negative strides.
 
         return sample
 
