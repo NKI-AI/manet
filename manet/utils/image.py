@@ -166,7 +166,7 @@ class MammogramImage(Image):
         if self.photometric_interpretation == 'MONOCHROME1':
             image_max = self.raw_image.max()
             self._image = image_max - self.raw_image
-            if self.header[DICOM_MANUFACTURER] == 'Agfa-Gevaert':
+            if self.header['dicom_tags'][DICOM_MANUFACTURER] == 'Agfa-Gevaert':
                 if self.num_dicom_center_widths == 0:
                     self.dicom_window_center = [image_max / 2]
                     self.dicom_window_width = [image_max]

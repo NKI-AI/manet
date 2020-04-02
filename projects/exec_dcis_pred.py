@@ -161,8 +161,6 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     losses = []
     dices = []
     start = time.perf_counter()
-    # loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK, reduce=False),
-    #            'topkbce': TopkBCELogits(top_k=cfg.TOPK, reduce=False)}[cfg.LOSS]
     loss_fn = build_losses(use_classifier)
     dice_fn = HardDice(cls=1, binary_cls=True)
 
