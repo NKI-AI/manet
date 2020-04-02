@@ -48,18 +48,24 @@ random.seed(314)
 torch.manual_seed(314)
 
 
+def build_losses(use_classifier=False):
+    loss_fns = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
+
+    if use_classifier:
+        loss_fns += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+
+    return loss_fns
+
+
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
     model.train()
     avg_loss = 0.
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
+    loss_fn = build_losses(use_classifier)
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
-
-    if use_classifier:
-        loss_fn += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
 
     for iter_idx, batch in enumerate(data_loader):
         images = batch['image'].to(args.device)
@@ -137,8 +143,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
         if iter_idx % cfg.REPORT_INTERVAL == 0:
             logger.info(
-                f'Ep = [{epoch:3d}/{cfg.N_EPOCHS:3d}] '
-                f'It = [{iter_idx:4d}/{len(data_loader):4d}] '
+                f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
+                f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
                 f'{loss_str}'
                 f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
@@ -157,8 +163,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     start = time.perf_counter()
     # loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK, reduce=False),
     #            'topkbce': TopkBCELogits(top_k=cfg.TOPK, reduce=False)}[cfg.LOSS]
-
-    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+    loss_fn = build_losses(use_classifier)
     dice_fn = HardDice(cls=1, binary_cls=True)
 
     with torch.no_grad():
@@ -423,7 +428,7 @@ def main(args):
             if args.local_rank == 0:
                 save_model(args, exp_path, epoch, model, optimizer, lr_scheduler)
                 logger.info(
-                    f'Epoch = [{epoch:4d}/{cfg.N_EPOCHS:4d}] TrainLoss = {train_loss:.4g} '
+                    f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] TrainLoss = {train_loss:.4g} '
                     f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '
                     f'TrainTime = {train_time:.4f}s DevTime = {dev_time:.4f}s',
                 )
