@@ -12,6 +12,8 @@ import argparse
 import pydicom as dicom
 import pathlib
 from fexp.utils.io import read_json, write_json
+from fexp.readers import read_image
+from fexp.utils.bbox import bounding_box
 from tqdm import tqdm
 
 
@@ -49,10 +51,26 @@ def main():
         study = dataset_description[str(patient)]
         for image_dict in range(0, len(study)):
             image_fn = pathlib.Path(study[image_dict]['filename'])
+            #study[image_dict]['label'] = str(pathlib.Path(image_fn.parent) / str(image_fn.stem + '_mask.nrrd'))
+            if 'label' in study[image_dict]:
+                try:
+                    study[image_dict]['bbox'] = compute_bounding_box(args.input_dir / study[image_dict]['label'])
+                except IndexError:
+                    tqdm.write(f"Fail: {study[image_dict]['label']}")
             study[image_dict]['metadata'] = read_metadata(args.input_dir / image_fn)
 
     write_json(args.output_path / 'dataset_description.json', dataset_description)
     print(f'Wrote description to {args.output_path}.')
+
+
+def compute_bounding_box(label_fn):
+    # TODO: Better building of cache names.
+    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)
+    bbox = bounding_box(label_arr)
+
+    # Classes cannot be collated in the standard pytorch collate function.
+    return [int(_) for _ in list(bbox)]
+
 
 
 def parse_args():
