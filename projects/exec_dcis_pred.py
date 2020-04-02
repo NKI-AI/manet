@@ -137,10 +137,10 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             loss_str += f'Loss_{loss_idx} = {loss.item():.4f} '
 
         if iter_idx % cfg.REPORT_INTERVAL == 0:
-            print( # TODO: Why does logger.info not work?
+            logger.info(
                 f'Ep = [{epoch:3d}/{cfg.N_EPOCHS:3d}] '
                 f'It = [{iter_idx:4d}/{len(data_loader):4d}] '
-                f'{loss_str}',
+                f'{loss_str}'
                 f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
                 f'GPU{args.local_rank}'
