@@ -106,6 +106,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 scaled_loss.backward()
         else:
             train_loss.backward()
+
         if torch.isnan(train_loss).any():
             logger.critical(f'Nan loss detected. Stopping training.')
             sys.exit()
@@ -140,15 +141,15 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         for loss_idx, loss in enumerate(losses):
             loss_str += f'Loss_{loss_idx} = {loss.item():.4f} '
 
-        # if iter_idx % cfg.REPORT_INTERVAL == 0:
-        #     logger.info(
-        #         f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
-        #         f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
-        #         f'{loss_str}'
-        #         f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
-        #         f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
-        #         f'GPU{args.local_rank}'
-        #     )
+        if iter_idx % cfg.REPORT_INTERVAL == 0:
+            logger.info(
+                f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
+                f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
+                f'{loss_str}'
+                f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
+                f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
+                f'GPU{args.local_rank}'
+            )
 
     return avg_loss, time.perf_counter() - start_epoch
 

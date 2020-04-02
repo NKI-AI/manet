@@ -131,7 +131,7 @@ class MammogramImage(Image):
         return output.astype(image.dtype)
 
     def _apply_linear_exact(self, image, window_center, window_width):
-        image_new = np.zeros_like(image)
+        image_new = np.zeros(image.shape, dtype=np.float)
 
         lower_mask = image <= window_center - window_width / 2
         upper_mask = image > window_center + window_width / 2
@@ -146,7 +146,7 @@ class MammogramImage(Image):
         return image_new
 
     def _apply_linear(self, image, window_center, window_width):
-        image_new = np.zeros_like(image)
+        image_new = np.zeros(image.shape, dtype=np.float)
 
         lower_mask = image <= window_center - 0.5 - (window_width - 1) / 2
         upper_mask = image > window_center - 0.5 + (window_width - 1) / 2
