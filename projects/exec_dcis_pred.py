@@ -70,7 +70,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     for iter_idx, batch in enumerate(data_loader):
         images = batch['image'].to(args.device)
         masks = batch['mask'].to(args.device)
-
         ground_truth = [masks]
         if use_classifier:
             ground_truth += batch['class'].to(args.device)
@@ -81,8 +80,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
 
-            image_arr = images.detach().cpu()[0, 0, ...]
-            masks_arr = masks.detach().cpu()[0, ...]
+            image_arr = (images.detach().cpu()[0, 0, ...].numpy() * 255).astype(np.int)
+            masks_arr = masks.detach().cpu()[0, ...].numpy()
 
             # image_grid = torchvision.utils.make_grid(images)
             # mask_grid = torchvision.utils.make_grid(masks)
@@ -141,15 +140,15 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         for loss_idx, loss in enumerate(losses):
             loss_str += f'Loss_{loss_idx} = {loss.item():.4f} '
 
-        if iter_idx % cfg.REPORT_INTERVAL == 0:
-            logger.info(
-                f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
-                f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
-                f'{loss_str}'
-                f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
-                f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
-                f'GPU{args.local_rank}'
-            )
+        # if iter_idx % cfg.REPORT_INTERVAL == 0:
+        #     logger.info(
+        #         f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
+        #         f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
+        #         f'{loss_str}'
+        #         f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
+        #         f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
+        #         f'GPU{args.local_rank}'
+        #     )
 
     return avg_loss, time.perf_counter() - start_epoch
 
