@@ -149,7 +149,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=True):
+def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
     logger.info(f'Evaluation for epoch {epoch}')
     model.eval()
 
