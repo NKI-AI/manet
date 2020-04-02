@@ -10,7 +10,7 @@ import numpy as np
 from manet.utils.dicom import DICOM_MODALITY_TAG, DICOM_VOI_LUT_FUNCTION, DICOM_VOI_LUT_SEQUENCE, DICOM_WINDOW_CENTER, \
     DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, DICOM_WINDOW_WIDTH, DICOM_FIELD_OF_VIEW_HORIZONTAL_FLIP, \
     DICOM_PATIENT_ORIENTATION, DICOM_LATERALITY, DICOM_IMAGE_LATERALITY, DICOM_VIEW_POSITION, \
-    DICOM_PHOTOMETRIC_INTERPRETATION
+    DICOM_PHOTOMETRIC_INTERPRETATION, DICOM_MANUFACTURER
 from manet.utils.image import MammogramImage
 from fexp.readers import read_image
 
@@ -33,7 +33,8 @@ def read_mammogram(filename):
     extra_tags = [DICOM_MODALITY_TAG, DICOM_VOI_LUT_FUNCTION, DICOM_VOI_LUT_SEQUENCE,
                   DICOM_LATERALITY, DICOM_IMAGE_LATERALITY, DICOM_VIEW_POSITION,
                   DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION,
-                  DICOM_FIELD_OF_VIEW_HORIZONTAL_FLIP, DICOM_PATIENT_ORIENTATION, DICOM_PHOTOMETRIC_INTERPRETATION]
+                  DICOM_FIELD_OF_VIEW_HORIZONTAL_FLIP, DICOM_PATIENT_ORIENTATION, DICOM_PHOTOMETRIC_INTERPRETATION,
+                  DICOM_MANUFACTURER]
 
     image, metadata = read_image(filename, dicom_keys=extra_tags)
     dicom_tags = metadata['dicom_tags']
@@ -47,13 +48,7 @@ def read_mammogram(filename):
     # Remove the depth dimension
     image = image.reshape(list(image.shape)[1:])
 
-    # Photometric Interpretation determines how to read the pixel values and if they should be inverted
-    photometric_interpretation = dicom_tags[DICOM_PHOTOMETRIC_INTERPRETATION]
-    if photometric_interpretation == 'MONOCHROME2':
-        pass
-    else:
-        raise NotImplementedError(f'Photometric Interpretation {photometric_interpretation} is not implemented.')
-
+    # Read laterality
     laterality = dicom_tags[DICOM_LATERALITY] or dicom_tags[DICOM_IMAGE_LATERALITY]
     metadata['laterality'] = laterality
 

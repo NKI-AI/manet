@@ -8,7 +8,7 @@ import warnings
 import numpy as np
 import pydicom
 from manet.utils.dicom import DICOM_WINDOW_CENTER, DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, \
-    build_dicom_lut
+    DICOM_PHOTOMETRIC_INTERPRETATION, build_dicom_lut
 from fexp.image import clip_and_scale
 
 
@@ -43,6 +43,9 @@ class MammogramImage(Image):
         if self.voi_lut_function not in ['LINEAR', 'LINEAR_EXACT', 'SIGMOID']:
             raise ValueError(
                 f'VOI LUT Function {self.voi_lut_function} is not supported by the DICOM standard.')
+
+        # Photometric Interpretation determines how to read the pixel values and if they should be inverted
+        self.photometric_interpretation = self.header[DICOM_PHOTOMETRIC_INTERPRETATION]
 
         self.view = view
         self.laterality = laterality
