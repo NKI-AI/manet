@@ -65,7 +65,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         if use_classifier:
             ground_truth += batch['class'].to(args.device)
 
-        print(images.min(), images.max())
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
             logger.info(f'Logging first batch to Tensorboard.')
@@ -85,7 +84,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
             plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
-        sys.exit('exit')
+
         train_loss = torch.tensor(0.).to(args.device)
 
         output = ensure_list(model(images))
