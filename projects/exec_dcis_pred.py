@@ -125,7 +125,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        train_dice = dice_fn(F.softmax(output[0])[0, 1, ...], masks)
+        train_dice = dice_fn(F.softmax(output[0], 1)[0, 1, ...], masks)
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}

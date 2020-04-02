@@ -44,7 +44,7 @@ class MammogramImage(Image):
             raise ValueError(
                 f'VOI LUT Function {self.voi_lut_function} is not supported by the DICOM standard.')
 
-        # Photometric Interpretation determines how to read the pixel values and if they should be inverted
+        # Photometric Interpretation determines how to read the pixel values and if they should be inverted.
         self.photometric_interpretation = self.header['dicom_tags'][DICOM_PHOTOMETRIC_INTERPRETATION]
 
         self.view = view
@@ -99,7 +99,7 @@ class MammogramImage(Image):
         for voi_lut in voi_lut_sequence:
             self.num_dicom_luts += 1
             lut_descriptor = list(voi_lut.LUTDescriptor)
-            lut_explanation = voi_lut.LUTExplanation
+            lut_explanation = getattr(voi_lut, 'LUTExplanation', '')  # Sometimes missing
             lut_data = list(voi_lut.LUTData)
             len_lut = lut_descriptor[0] if not lut_descriptor[0] == 0 else 2 ** 16
             first_value = lut_descriptor[1]  # TODO: This assumes that mammograms are always unsigned integers.
