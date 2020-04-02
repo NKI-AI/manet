@@ -45,7 +45,7 @@ class MammogramImage(Image):
                 f'VOI LUT Function {self.voi_lut_function} is not supported by the DICOM standard.')
 
         # Photometric Interpretation determines how to read the pixel values and if they should be inverted
-        self.photometric_interpretation = self.header[DICOM_PHOTOMETRIC_INTERPRETATION]
+        self.photometric_interpretation = self.header['dicom_tags'][DICOM_PHOTOMETRIC_INTERPRETATION]
 
         self.view = view
         self.laterality = laterality
