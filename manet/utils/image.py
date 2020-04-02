@@ -131,33 +131,33 @@ class MammogramImage(Image):
         return output.astype(image.dtype)
 
     def _apply_linear_exact(self, image, window_center, window_width):
-        image_new = np.zeros(image.shape, dtype=np.float)
+        output = np.zeros(image.shape, dtype=np.float)
 
         lower_mask = image <= window_center - window_width / 2
         upper_mask = image > window_center + window_width / 2
 
-        image_new[lower_mask] = self._output_range[0]
-        image_new[upper_mask] = self._output_range[1]
+        output[lower_mask] = self._output_range[0]
+        output[upper_mask] = self._output_range[1]
 
-        image_new[~lower_mask & ~upper_mask] =\
+        output[~lower_mask & ~upper_mask] =\
             (image[~lower_mask & ~upper_mask] - window_center) / window_width + 0.5
 
-        image_new = clip_and_scale(image_new, None, None, self._output_range)
+        image_new = clip_and_scale(output, None, None, self._output_range)
         return image_new
 
     def _apply_linear(self, image, window_center, window_width):
-        image_new = np.zeros(image.shape, dtype=np.float)
+        output = np.zeros(image.shape, dtype=np.float)
 
         lower_mask = image <= window_center - 0.5 - (window_width - 1) / 2
         upper_mask = image > window_center - 0.5 + (window_width - 1) / 2
 
-        image_new[lower_mask] = self._output_range[0]
-        image_new[upper_mask] = self._output_range[1]
+        output[lower_mask] = self._output_range[0]
+        output[upper_mask] = self._output_range[1]
 
-        image_new[~lower_mask & ~upper_mask] =\
+        output[~lower_mask & ~upper_mask] =\
             (image[~lower_mask & ~upper_mask] - (window_center - 0.5)) / (window_width - 1) + 0.5
 
-        image_new = clip_and_scale(image_new, None, None, self._output_range)
+        image_new = clip_and_scale(output, None, None, self._output_range)
         return image_new
 
     @property
