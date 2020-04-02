@@ -48,15 +48,6 @@ random.seed(314)
 torch.manual_seed(314)
 
 
-def build_losses(use_classifier=False):
-    loss_fns = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
-
-    if use_classifier:
-        loss_fns += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
-
-    return loss_fns
-
-
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
     model.train()
     avg_loss = 0.
@@ -80,8 +71,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
 
-            image_arr = (images.detach().cpu()[0, 0, ...].numpy() * 255).astype(np.int)
-            masks_arr = masks.detach().cpu()[0, ...].numpy()
+            image_arr = images.detach().cpu()[0, 0, ...]
+            masks_arr = masks.detach().cpu()[0, ...]
 
             # image_grid = torchvision.utils.make_grid(images)
             # mask_grid = torchvision.utils.make_grid(masks)
@@ -181,14 +172,18 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 # TODO: Multiple images, using a gridding function.
                 image_arr = images.detach().cpu().numpy()[0, 0, ...]
                 output_arr = output_softmax.detach().cpu().numpy()[0, 1, ...]
+                masks_arr = masks.detach().cpu()[0, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
+                plot_mask = torch.from_numpy(np.array(plot_2d(masks_arr)))
                 plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
+
                 plot_overlay = torch.from_numpy(
                     np.array(plot_2d(
-                        image_arr, mask=output_arr, overlay=output_arr, overlay_threshold=0.5, overlay_alpha=0.5)))
+                        image_arr, mask=output_arr, overlay_threshold=0.25, overlay_alpha=0.5)))
 
                 writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
+                writer.add_image('validation/mask', plot_mask, epoch, dataformats='HWC')
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
@@ -214,6 +209,15 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start, losses
     else:
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start
+
+
+def build_losses(use_classifier=False):
+    loss_fns = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
+
+    if use_classifier:
+        loss_fns += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+
+    return loss_fns
 
 
 def build_model(device, use_classifier=False):
