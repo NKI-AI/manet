@@ -68,14 +68,14 @@ class MammogramImage(Image):
         explanation = self.header['dicom_tags'][DICOM_WINDOW_CENTER_WIDTH_EXPLANATION]
 
         if window_center and window_width:
-            self.dicom_window_center = [float(_) for _ in window_center.split('/')]
-            self.dicom_window_width = [float(_) for _ in window_width.split('/')]
+            self.dicom_window_center = [float(_) for _ in window_center.split('\\')]
+            self.dicom_window_width = [float(_) for _ in window_width.split('\\')]
             if not len(self.dicom_window_width) == len(self.dicom_window_center):
                 raise ValueError(f'Number of widths and center mismatch.')
             self.num_dicom_center_widths = len(self.dicom_window_width)
 
         if explanation:
-            self.dicom_center_width_explanation = [_.strip() for _ in explanation.split('/')]
+            self.dicom_center_width_explanation = [_.strip() for _ in explanation.split('\\')]
 
         if self.voi_lut_function == 'SIGMOID':
             # In this case, window and center always need to be set.
@@ -102,7 +102,7 @@ class MammogramImage(Image):
 
             self.dicom_luts.append((lut_explanation, lut_data, len_lut, first_value))
 
-    def select_lut(self, idx):
+    def set_lut(self, idx):
         if idx is not None and (idx < 0 or idx >= len(self.dicom_luts)):
             raise ValueError(f'Incorrect LUT index. Got {idx}.')
         self._current_set_lut = idx
@@ -143,7 +143,8 @@ class MammogramImage(Image):
     @property
     def image(self):
         if self._current_set_lut is not None and self._current_set_center_width is not None:
-            warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results.')
+            warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results. '
+                          f'Got {self._current_set_lut} and {self._current_set_center_width} for {self.data_origin}.')
 
         if self._current_set_lut is not None:
             _, lut_data, len_lut, first_value = self.dicom_luts[self._current_set_lut]

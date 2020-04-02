@@ -13,6 +13,7 @@ import time
 import torch
 import apex
 import pathlib
+import Random
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
@@ -25,7 +26,7 @@ from manet.nn.training.lr_scheduler import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
-from manet.data.transforms import CropAroundBbox, RandomShiftBbox, RandomFlipTransform
+from manet.data.transforms import CropAroundBbox, RandomLUT, RandomShiftBbox, RandomFlipTransform
 from fexp.transforms import Compose, ClipAndScale
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.unet.unet_classifier import UnetModel2dClassifier
@@ -40,6 +41,11 @@ from fexp.utils.io import read_list, read_json
 
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
+
+np.random.seed(314)
+random.seed(314)
+torch.manual_seed(314)
+
 
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
     segmentation_path = pathlib.Path(cfg.EXP_DIR) / args.name / 'segmentations'
@@ -97,10 +103,10 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             output = [output]
 
         #losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]).to(args.device)
-        losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
+        losses = [loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
         #losses.requires_grad_(True)
-        train_loss += losses.sum()
-        train_loss.requires_grad_(True)
+        train_loss += sum(losses)
+        #train_loss.requires_grad_(True)
 
         # Backprop the loss, use APEX if necessary
         if cfg.APEX >= 0:
@@ -111,7 +117,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         if torch.isnan(train_loss).any():
             logger.critical(f'Nan loss detected. Stopping training.')
             sys.exit()
-        mem_usage = torch.cuda.memory_allocated()
+        mem_usage = int(torch.cuda.memory_allocated())
 
         # Gradient accumulation
         if (iter_idx + 1) % cfg.GRAD_STEPS == 0:
@@ -138,16 +144,16 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 writer.add_scalar(key, metric_dict[key].item(), global_step + iter_idx)
                 writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step + iter_idx)
 
-        #loss_str = f'Loss = {train_loss.item():.4g} Avg Loss = {avg_loss:.4g} '
-        #for loss_idx, loss in enumerate(losses):
-        #    loss_str += f'Loss_{loss_idx} = {loss.item():.4g} '
+        loss_str = f'Loss = {train_loss.item():.4f} Avg Loss = {avg_loss:.4f} '
+        for loss_idx, loss in enumerate(losses):
+            loss_str += f'Loss_{loss_idx} = {loss.item():.4f} '
 
         if iter_idx % cfg.REPORT_INTERVAL == 0:
             logger.info(
                 f'Ep = [{epoch:3d}/{cfg.N_EPOCHS:3d}] '
                 f'It = [{iter_idx:4d}/{len(data_loader):4d}] '
-         #       f'{loss_str}'
-                f'Dice = {train_dice.item():.4g} Avg DICE = {avg_dice:.4g} '
+                f'{loss_str}'
+                f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
                 f'GPU {args.local_rank} '
                 f'LR = {optimizer.param_groups[0]["lr"], global_step + iter_idx}'
