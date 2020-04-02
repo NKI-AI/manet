@@ -20,6 +20,7 @@ class CropAroundBbox:
 
         sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
         sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
+
         del sample['bbox']
         return sample
 
@@ -33,7 +34,9 @@ class RandomShiftBbox:
         bbox = BoundingBox(sample['bbox'])
         shift = np.random.randint(-self.max_shift, self.max_shift)
         new_bbox = (bbox + shift).astype(np.int)
+
         sample['bbox'] = new_bbox
+
         return sample
 
 
@@ -129,5 +132,4 @@ class RandomLUT:
             mammogram.set_center_width(*dicom_window)
 
         sample['image'] = mammogram.image[np.newaxis, ...].astype(np.float32)
-
         return sample

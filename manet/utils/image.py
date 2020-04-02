@@ -24,7 +24,7 @@ class Image:
         self.header = header
         self.spacing = None if not header else header.get('spacing', None)
 
-    @staticmethod
+    @property
     def shape(self):
         return self.data.shape
 
@@ -142,8 +142,8 @@ class MammogramImage(Image):
         output[~lower_mask & ~upper_mask] =\
             (image[~lower_mask & ~upper_mask] - window_center) / window_width + 0.5
 
-        image_new = clip_and_scale(output, None, None, self._output_range)
-        return image_new
+        output = clip_and_scale(output, None, None, self._output_range)
+        return output
 
     def _apply_linear(self, image, window_center, window_width):
         output = np.zeros(image.shape, dtype=np.float)
@@ -157,8 +157,8 @@ class MammogramImage(Image):
         output[~lower_mask & ~upper_mask] =\
             (image[~lower_mask & ~upper_mask] - (window_center - 0.5)) / (window_width - 1) + 0.5
 
-        image_new = clip_and_scale(output, None, None, self._output_range)
-        return image_new
+        output = clip_and_scale(output, None, None, self._output_range)
+        return output
 
     @property
     def image(self):
@@ -184,7 +184,7 @@ class MammogramImage(Image):
             LUT = build_dicom_lut(self._uniques, lut_data, len_lut, first_value)
             self._image = clip_and_scale(LUT[self.raw_image], None, None, self._output_range)
 
-        if all(self._current_set_center_width):
+        elif all(self._current_set_center_width):
             if self.voi_lut_function == 'LINEAR':
                 self._image = self._apply_linear(self.raw_image, *self._current_set_center_width)
             elif self.voi_lut_function == 'LINEAR_EXACT':
@@ -194,6 +194,8 @@ class MammogramImage(Image):
                     self._apply_sigmoid(self.raw_image, *self._current_set_center_width), None, None, self._output_range)
             else:
                 raise ValueError(f'VOI LUT Function {self.voi_lut_function} is not supported by the DICOM standard.')
+        else:
+            return self.raw_image
 
         return self._image
 

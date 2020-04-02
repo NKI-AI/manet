@@ -43,9 +43,9 @@ from fexp.utils.io import read_list, read_json
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
 
-np.random.seed(314)
-random.seed(314)
-torch.manual_seed(314)
+np.random.seed(3145)
+random.seed(3145)
+torch.manual_seed(3145)
 
 
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
@@ -65,14 +65,16 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         if use_classifier:
             ground_truth += batch['class'].to(args.device)
 
+        print(images.min(), images.max())
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
             logger.info(f'Logging first batch to Tensorboard.')
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
 
-            image_arr = images.detach().cpu()[0, 0, ...]
-            masks_arr = masks.detach().cpu()[0, ...]
+            image_arr = images.detach().cpu().numpy()[0, 0, ...]
+            masks_arr = masks.detach().cpu().numpy()[0, ...]
+            logger.info(f'Image min: {image_arr.min()} Image max: {image_arr.max()}')
 
             # image_grid = torchvision.utils.make_grid(images)
             # mask_grid = torchvision.utils.make_grid(masks)
@@ -83,7 +85,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
             plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
-
+        sys.exit('exit')
         train_loss = torch.tensor(0.).to(args.device)
 
         output = ensure_list(model(images))
@@ -175,7 +177,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 masks_arr = masks.detach().cpu()[0, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
-                plot_mask = torch.from_numpy(np.array(plot_2d(masks_arr)))
+                plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, masks=masks_arr)))
                 plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
 
                 plot_overlay = torch.from_numpy(
@@ -183,7 +185,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                         image_arr, mask=output_arr, overlay_threshold=0.25, overlay_alpha=0.5)))
 
                 writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
-                writer.add_image('validation/mask', plot_mask, epoch, dataformats='HWC')
+                writer.add_image('validation/ground_truth', plot_gt, epoch, dataformats='HWC')
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
