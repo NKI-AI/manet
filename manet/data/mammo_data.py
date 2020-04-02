@@ -30,7 +30,7 @@ class MammoDataset(Dataset):
         self.cache_dir = pathlib.Path(cache_dir)
 
         self.filter_negatives = True
-        self.use_bounding_boxes = True
+        #self.use_bounding_boxes = True
 
         if isinstance(dataset_description, (str, pathlib.Path)):
             self.logger.info(f'Loading dataset description from file {dataset_description}.')
@@ -60,13 +60,13 @@ class MammoDataset(Dataset):
                         labels.append(label_fns)
                         curr_data_dict['label_fn'] = label_fns
 
-                        if self.use_bounding_boxes:
-                            try:
-                                bbox = self.compute_bounding_box(label_fn)
-                                curr_data_dict['bbox'] = [int(i) for i in bbox]
-                            except IndexError:
-                                self.logger.error(f'Cannot compute bounding box of {label_fn}.')
-                                continue
+                        if 'bbox' not in image_dict:
+                            image = curr_data_dict['image_fn']
+                            self.logger.info(
+                                f'Patient {path} with study {image} has no bounding box, skipping.')
+                            continue
+                        curr_data_dict['bbox'] = image_dict['bbox']
+
                         self.data.append(curr_data_dict)
                         write_json(data_cache, curr_data_dict)
                         write_list('list_labels', labels)
@@ -74,20 +74,6 @@ class MammoDataset(Dataset):
                         NotImplementedError()
 
         self.logger.info(f'Loaded dataset of size {len(self.data)}.')
-
-    def compute_bounding_box(self, label_fn):
-        # TODO: Better building of cache names.
-        bbox_cache = self.cache_dir / hashlib.sha224(str(label_fn).encode()).hexdigest()
-        if bbox_cache.exists() and self._cache_valid:
-            bbox = read_json(bbox_cache)[str(label_fn)]
-        else:
-            self.logger.debug(f'Computing bounding box for {label_fn}.')
-            label_arr = read_image(self.data_root / label_fn, force_2d=True, no_metadata=True)
-            bbox = bounding_box(label_arr)
-            write_json(bbox_cache, {str(label_fn): bbox.bbox.tolist()})
-
-        # Classes cannot be collated in the standard pytorch collate function.
-        return list(bbox)
 
     def validate_cache(self):
         # This function checks if the dataset description has changed, if so, the whole cache is invalidated.
@@ -118,28 +104,25 @@ class MammoDataset(Dataset):
     def __getitem__(self, idx):
         data_dict = self.data[idx]
 
-        if not self.filter_negatives or not self.use_bounding_boxes:
+        if not self.filter_negatives:
             raise NotImplementedError()
 
         image_fn = self.data_root / pathlib.Path(data_dict['image_fn'])
         label_fn = self.data_root / pathlib.Path(data_dict['label_fn'])
-        bbox = data_dict['bbox']
         stage = data_dict['class']
 
         mammogram = read_mammogram(image_fn)
         mammogram = mammogram.data[np.newaxis, ...]
-        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)
+        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
 
         sample = {
             'mammogram': mammogram,
             'mask': mask,
+            'bbox': data_dict['bbox'],
             'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
             'label_fn': str(label_fn),
             'class': stage
         }
-
-        if self.use_bounding_boxes:
-            sample['bbox'] = data_dict['bbox']
 
         if self.transform:
             sample = self.transform(sample)

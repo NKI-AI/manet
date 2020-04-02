@@ -13,7 +13,7 @@ import time
 import torch
 import apex
 import pathlib
-import Random
+import random
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
@@ -159,14 +159,13 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 f'LR = {optimizer.param_groups[0]["lr"], global_step + iter_idx}'
             )
 
-        import gc
-        from functools import reduce
-        import operator as op
-        for obj in gc.get_objects():
-            if torch.is_tensor(obj): #or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-                print(reduce(op.mul, obj.size()) if len(obj.size()) > 0 else 0, type(obj), obj.size())
-
-        sys.exit()
+        # import gc
+        # from functools import reduce
+        # import operator as op
+        # for obj in gc.get_objects():
+        #     if torch.is_tensor(obj): #or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+        #         print(reduce(op.mul, obj.size()) if len(obj.size()) > 0 else 0, type(obj), obj.size())
+        # sys.exit()
     return avg_loss, time.perf_counter() - start_epoch
 
 

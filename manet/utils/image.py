@@ -8,7 +8,7 @@ import warnings
 import numpy as np
 import pydicom
 from manet.utils.dicom import DICOM_WINDOW_CENTER, DICOM_WINDOW_WIDTH, DICOM_WINDOW_CENTER_WIDTH_EXPLANATION, \
-    build_dicom_lut
+    DICOM_PHOTOMETRIC_INTERPRETATION, DICOM_MANUFACTURER, build_dicom_lut
 from fexp.image import clip_and_scale
 
 
@@ -44,6 +44,9 @@ class MammogramImage(Image):
             raise ValueError(
                 f'VOI LUT Function {self.voi_lut_function} is not supported by the DICOM standard.')
 
+        # Photometric Interpretation determines how to read the pixel values and if they should be inverted.
+        self.photometric_interpretation = self.header['dicom_tags'][DICOM_PHOTOMETRIC_INTERPRETATION]
+
         self.view = view
         self.laterality = laterality
 
@@ -53,6 +56,9 @@ class MammogramImage(Image):
         self._output_range = (0.0, 1.0)
         self._current_set_center_width = [None, None]
         self.num_dicom_center_widths = 0
+        self.dicom_window_center = []
+        self.dicom_window_width = []
+
         self._parse_window_level()
 
         # LUTs
@@ -80,8 +86,10 @@ class MammogramImage(Image):
         if self.voi_lut_function == 'SIGMOID':
             # In this case, window and center always need to be set.
             if not (len(self.dicom_window_center) == 1 and len(self.dicom_window_width) == 1):
-                raise ValueError(f'If VOILUTFunction is set to `SIGMOID`, '
-                                 f'tags {DICOM_WINDOW_CENTER} and {DICOM_WINDOW_WIDTH} need to be set with one value.')
+                warnings.warn(f'If VOILUTFunction is set to `SIGMOID`, '
+                              f'tags {DICOM_WINDOW_CENTER} and {DICOM_WINDOW_WIDTH} need to be set with one value '
+                              f'according to the DICOM standard. Got {self.dicom_window_center} and '
+                              f'{self.dicom_window_width} for {self.data_origin}.')
             self._current_set_center_width = [self.dicom_window_center[0], self.dicom_window_width[0]]
 
     def _parse_luts(self):
@@ -94,7 +102,7 @@ class MammogramImage(Image):
         for voi_lut in voi_lut_sequence:
             self.num_dicom_luts += 1
             lut_descriptor = list(voi_lut.LUTDescriptor)
-            lut_explanation = voi_lut.LUTExplanation
+            lut_explanation = getattr(voi_lut, 'LUTExplanation', '')  # Sometimes missing
             lut_data = list(voi_lut.LUTData)
             len_lut = lut_descriptor[0] if not lut_descriptor[0] == 0 else 2 ** 16
             first_value = lut_descriptor[1]  # TODO: This assumes that mammograms are always unsigned integers.
@@ -142,7 +150,20 @@ class MammogramImage(Image):
 
     @property
     def image(self):
-        if self._current_set_lut is not None and self._current_set_center_width is not None:
+        # MONOCHROME1 handling
+        if self.photometric_interpretation == 'MONOCHROME1':
+            image_max = self.raw_image.max()
+            self._image = image_max - self.raw_image
+            if self.header[DICOM_MANUFACTURER] == 'Agfa-Gevaert':
+                if self.num_dicom_center_widths == 0:
+                    self.dicom_window_center = [image_max / 2]
+                    self.dicom_window_width = [image_max]
+                else:
+                    raise NotImplementedError
+            else:
+                raise NotImplementedError
+
+        if self._current_set_lut is not None and any([_ is not None for _ in self._current_set_center_width]):
             warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results. '
                           f'Got {self._current_set_lut} and {self._current_set_center_width} for {self.data_origin}.')
 
