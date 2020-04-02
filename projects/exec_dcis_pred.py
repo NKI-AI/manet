@@ -33,6 +33,7 @@ from manet.nn.unet.unet_classifier import UnetModel2dClassifier
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
+from manet.utils import ensure_list
 from fexp.plotting import plot_2d
 
 import torch.nn.functional as F
@@ -89,9 +90,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
         train_loss = torch.tensor(0.).to(args.device)
 
-        output = model(images)
-        if not isinstance(output, (list, tuple)):
-            output = [output]
+        output = ensure_list(model(images))
 
         losses = [loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
         train_loss += sum(losses)
@@ -164,23 +163,20 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
-            image = batch['image'].to(args.device)
-            mask = batch['mask'].to(args.device)
+            images = batch['image'].to(args.device)
+            masks = batch['mask'].to(args.device)
 
-            ground_truth = [mask]
+            ground_truth = [masks]
             if use_classifier:
                 ground_truth += batch['class'].to(args.device)
 
-            output = model(image)
-            if not isinstance(output, (list, tuple)):
-                output = [output]
+            output = ensure_list(model(images))
 
-            output_softmax = F.softmax(output[0], 1)
-            output_class = F.softmax(output[1], 1)
+            output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
 
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
-                image_arr = image.detach().cpu().numpy()[0, 0, ...]
+                image_arr = images.detach().cpu().numpy()[0, 0, ...]
                 output_arr = output_softmax.detach().cpu().numpy()[0, 1, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
@@ -196,7 +192,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             batch_losses = torch.tensor([loss_fn[idx][output[idx], ground_truth[idx]] for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
 
-            batch_dice = dice_fn(output_softmax[0, 1, ...], mask)
+            batch_dice = dice_fn(output_softmax[0, 1, ...], masks)
             dices.append(batch_dice.item())
             del output
 
