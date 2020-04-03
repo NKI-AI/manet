@@ -176,7 +176,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 masks_arr = masks.detach().cpu()[0, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
-                plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, masks=masks_arr)))
+                plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
                 plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
 
                 plot_overlay = torch.from_numpy(
