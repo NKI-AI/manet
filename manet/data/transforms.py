@@ -47,9 +47,12 @@ class RandomFlipTransform:
         if not np.random.random_sample() < self.probability:
             return sample
 
-        sample['mammogram'] = np.flip(sample['mammogram'], axis=self.axis)
+        if 'bbox' in sample:
+            raise NotImplementedError
+
+        sample['mammogram'] = np.flip(sample['mammogram'], axis=self.axis).copy()  # Fix once torch supports negative strides.
         if 'mask' in sample:
-            sample['mask'] = np.flip(sample['mask'], axis=self.axis)
+            sample['mask'] = np.flip(sample['mask'], axis=self.axis).copy()
 
         return sample
 
@@ -128,6 +131,5 @@ class RandomLUT:
                 dicom_window = [mammogram.dicom_window_center[0], mammogram.dicom_window_width[0]]
             mammogram.set_center_width(*dicom_window)
 
-        sample['mammogram'] = mammogram.image
-
+        sample['mammogram'] = mammogram.image[np.newaxis, ...].astype(np.float32)
         return sample

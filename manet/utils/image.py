@@ -24,7 +24,7 @@ class Image:
         self.header = header
         self.spacing = None if not header else header.get('spacing', None)
 
-    @staticmethod
+    @property
     def shape(self):
         return self.data.shape
 
@@ -131,21 +131,33 @@ class MammogramImage(Image):
         return output.astype(image.dtype)
 
     def _apply_linear_exact(self, image, window_center, window_width):
-        output = np.clip(image,
-                         window_center - window_width / 2,
-                         window_center + window_width / 2)
+        output = np.zeros(image.shape, dtype=np.float)
 
-        output = ((output - window_center) / window_width) + 0.5
-        output = output * (self._output_range[1] - self._output_range[0]) + self._output_range[0]
+        lower_mask = image <= window_center - window_width / 2
+        upper_mask = image > window_center + window_width / 2
+
+        output[lower_mask] = self._output_range[0]
+        output[upper_mask] = self._output_range[1]
+
+        output[~lower_mask & ~upper_mask] =\
+            (image[~lower_mask & ~upper_mask] - window_center) / window_width + 0.5
+
+        output = clip_and_scale(output, None, None, self._output_range)
         return output
 
     def _apply_linear(self, image, window_center, window_width):
-        output = np.clip(image,
-                         window_center - 0.5 - (window_width - 1) / 2,
-                         window_center - 0.5 + (window_width - 1) / 2)
+        output = np.zeros(image.shape, dtype=np.float)
 
-        output = ((output - (window_center - 0.5)) / (window_width - 1)) + 0.5
-        output = output * (self._output_range[1] - self._output_range[0]) + self._output_range[0]
+        lower_mask = image <= window_center - 0.5 - (window_width - 1) / 2
+        upper_mask = image > window_center - 0.5 + (window_width - 1) / 2
+
+        output[lower_mask] = self._output_range[0]
+        output[upper_mask] = self._output_range[1]
+
+        output[~lower_mask & ~upper_mask] =\
+            (image[~lower_mask & ~upper_mask] - (window_center - 0.5)) / (window_width - 1) + 0.5
+
+        output = clip_and_scale(output, None, None, self._output_range)
         return output
 
     @property
@@ -154,7 +166,7 @@ class MammogramImage(Image):
         if self.photometric_interpretation == 'MONOCHROME1':
             image_max = self.raw_image.max()
             self._image = image_max - self.raw_image
-            if self.header[DICOM_MANUFACTURER] == 'Agfa-Gevaert':
+            if self.header['dicom_tags'][DICOM_MANUFACTURER] == 'Agfa-Gevaert':
                 if self.num_dicom_center_widths == 0:
                     self.dicom_window_center = [image_max / 2]
                     self.dicom_window_width = [image_max]
@@ -164,26 +176,26 @@ class MammogramImage(Image):
                 raise NotImplementedError
 
         if self._current_set_lut is not None and any([_ is not None for _ in self._current_set_center_width]):
-            warnings.warn(f'Both LUT and center width are set, this can lead to unexpected results. '
+            warnings.warn(f'Both LUT and center width are set, only LUT will be applied. '
                           f'Got {self._current_set_lut} and {self._current_set_center_width} for {self.data_origin}.')
 
         if self._current_set_lut is not None:
             _, lut_data, len_lut, first_value = self.dicom_luts[self._current_set_lut]
             LUT = build_dicom_lut(self._uniques, lut_data, len_lut, first_value)
             self._image = clip_and_scale(LUT[self.raw_image], None, None, self._output_range)
-        else:
-            self._image = clip_and_scale(self.raw_image, None, None, self._output_range)
 
-        if all(self._current_set_center_width):
+        elif all(self._current_set_center_width):
             if self.voi_lut_function == 'LINEAR':
-                self._image = self._apply_linear(self._image, *self._current_set_center_width)
+                self._image = self._apply_linear(self.raw_image, *self._current_set_center_width)
             elif self.voi_lut_function == 'LINEAR_EXACT':
-                self._image = self._apply_linear_exact(self._image, *self._current_set_center_width)
+                self._image = self._apply_linear_exact(self.raw_image, *self._current_set_center_width)
             elif self.voi_lut_function == 'SIGMOID':
                 self._image = clip_and_scale(
-                    self._apply_sigmoid(self._image, *self._current_set_center_width), None, None, self._output_range)
+                    self._apply_sigmoid(self.raw_image, *self._current_set_center_width), None, None, self._output_range)
             else:
                 raise ValueError(f'VOI LUT Function {self.voi_lut_function} is not supported by the DICOM standard.')
+        else:
+            return self.raw_image
 
         return self._image
 

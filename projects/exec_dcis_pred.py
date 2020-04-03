@@ -33,7 +33,8 @@ from manet.nn.unet.unet_classifier import UnetModel2dClassifier
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
-from manet.utils.plotting import plot_2d
+from manet.utils import ensure_list
+from fexp.plotting import plot_2d
 
 import torch.nn.functional as F
 
@@ -42,27 +43,22 @@ from fexp.utils.io import read_list, read_json
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
 
-np.random.seed(314)
-random.seed(314)
-torch.manual_seed(314)
+np.random.seed(3145)
+random.seed(3145)
+torch.manual_seed(3145)
 
 
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
-    segmentation_path = pathlib.Path(cfg.EXP_DIR) / args.name / 'segmentations'
+    segmentation_path = pathlib.Path(args.experiment_directory) / args.name / 'segmentations'
     
     model.train()
     avg_loss = 0.
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
-    #loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+    loss_fn = build_losses(use_classifier)
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
-
-    if use_classifier:
-        print('Using classifier')
-        loss_fn += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
 
     for iter_idx, batch in enumerate(data_loader):
         images = batch['mammogram'].to(args.device)
@@ -78,8 +74,9 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
 
-            image_arr = images.detach().cpu()[0, 0, ...]
-            masks_arr = masks.detach().cpu()[0, ...]
+            image_arr = images.detach().cpu().numpy()[0, 0, ...]
+            masks_arr = masks.detach().cpu().numpy()[0, ...]
+            logger.info(f'Image min: {image_arr.min()} Image max: {image_arr.max()}')
 
             # image_grid = torchvision.utils.make_grid(images)
             # mask_grid = torchvision.utils.make_grid(masks)
@@ -96,11 +93,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
         train_loss = torch.tensor(0.).to(args.device)
-        output = model(images)
-        #train_loss += loss_fn(output, masks)
 
-        if not isinstance(output, (list, tuple)):
-            output = [output]
+        output = ensure_list(model(images))
 
         #losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]).to(args.device)
         losses = [loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
@@ -132,7 +126,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        train_dice = dice_fn(F.softmax(output[0])[0, 1, ...], masks)
+        train_dice = dice_fn(F.softmax(output[0], 1)[0, 1, ...], masks)
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}
@@ -150,8 +144,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
         if iter_idx % cfg.REPORT_INTERVAL == 0:
             logger.info(
-                f'Ep = [{epoch:3d}/{cfg.N_EPOCHS:3d}] '
-                f'It = [{iter_idx:4d}/{len(data_loader):4d}] '
+                f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
+                f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
                 f'{loss_str}'
                 f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
                 f'Mem = {mem_usage / (1024 ** 3):.2f}GB '
@@ -159,73 +153,59 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 f'LR = {optimizer.param_groups[0]["lr"], global_step + iter_idx}'
             )
 
-        # import gc
-        # from functools import reduce
-        # import operator as op
-        # for obj in gc.get_objects():
-        #     if torch.is_tensor(obj): #or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-        #         print(reduce(op.mul, obj.size()) if len(obj.size()) > 0 else 0, type(obj), obj.size())
-        # sys.exit()
     return avg_loss, time.perf_counter() - start_epoch
 
 
 def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
-    segmentation_path = pathlib.Path(cfg.EXP_DIR) / args.name / 'segmentations'
+    segmentation_path = pathlib.Path(args.experiment_directory) / args.name / 'segmentations'
     logger.info(f'Evaluation for epoch {epoch}')
     model.eval()
 
     losses = []
     dices = []
     start = time.perf_counter()
-    # loss_fn = {'topkce': TopkCrossEntropy(top_k=cfg.TOPK, reduce=False),
-    #            'topkbce': TopkBCELogits(top_k=cfg.TOPK, reduce=False)}[cfg.LOSS]
-
-    loss_fn = torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+    loss_fn = build_losses(use_classifier)
     dice_fn = HardDice(cls=1, binary_cls=True)
 
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
-            image = batch['image'].to(args.device)
-            mask = batch['mask'].to(args.device)
+            images = batch['mammogram'].to(args.device)
+            masks = batch['mask'].to(args.device)
 
-            ground_truth = [mask]
+            ground_truth = [masks]
             if use_classifier:
                 ground_truth += batch['class'].to(args.device)
 
-            output = model(image)
-            if not isinstance(output, (list, tuple)):
-                output = [output]
+            output = ensure_list(model(images))
 
-            #if use_classifier:
-            #    output_softmax = F.softmax(output[0], 1)
-            #    output_class = F.softmax(output[1], 1)
-            #else:
-            #    output_softmax = F.softmax(output[0], 1)
-
-            output_softmax = F.softmax(output[0], 1)
-            output_class = F.softmax(output[1], 1)
+            output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
 
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
-                image_arr = image.detach().cpu().numpy()[0, 0, ...]
+                image_arr = images.detach().cpu().numpy()[0, 0, ...]
                 output_arr = output_softmax.detach().cpu().numpy()[0, 1, ...]
+                masks_arr = masks.detach().cpu()[0, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
+                plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
                 plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
-                overlayed_image = plot_2d(
-                        image_arr, mask=output_arr, overlay=output_arr, overlay_threshold=0.5, overlay_alpha=0.5)
-                plot_overlay = torch.from_numpy(np.array(overlayed_image))
+                plot_overlay = torch.from_numpy(
+                    np.array(plot_2d(
+                        image_arr, mask=output_arr, overlay_threshold=0.25, overlay_alpha=0.5)))
 
-                plot_overlay.save(segmentation_path / f'image_{epoch}.png')
+                #plot_overlay.save(segmentation_path / f'image_{epoch}.png')
+                overlay_image = plot_2d(image_arr, mask=output_arr)
+                overlay_image.save(segmentation_path / 'overlay_image.png')
                         
                 writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
+                writer.add_image('validation/ground_truth', plot_gt, epoch, dataformats='HWC')
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
-            batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]).to(args.device)
+            batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
 
-            batch_dice = dice_fn(output_softmax[0, 1, ...], mask)
+            batch_dice = dice_fn(output_softmax[0, 1, ...], masks)
             dices.append(batch_dice.item())
             del output
 
@@ -246,6 +226,15 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start
 
 
+def build_losses(use_classifier=False):
+    loss_fns = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
+
+    if use_classifier:
+        loss_fns += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
+
+    return loss_fns
+
+
 def build_model(device, use_classifier=False):
     if use_classifier:
         model = None
@@ -255,7 +244,8 @@ def build_model(device, use_classifier=False):
 
     return model
 
-def init_train_data(args, cfg, data_source, use_weights=True):
+
+def build_datasets(data_source):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     train_list = read_list(data_source / 'training_set.txt')
     validation_list = read_list(data_source / 'validation_set.txt')
@@ -265,37 +255,56 @@ def init_train_data(args, cfg, data_source, use_weights=True):
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
 
+    return training_description, validation_description
+
+
+def build_transforms():
     # Build datasets
     train_transforms = Compose([
-        ClipAndScale(None, None, [0, 1]),
-        RandomFlipTransform(0.5),
+        RandomLUT(),
+        # ClipAndScale(None, None, [0, 1]),
         RandomShiftBbox([100, 100]),
-        CropAroundBbox((1, 1024, 1024))
+        CropAroundBbox((1, 1024, 1024)),
+        RandomFlipTransform(0.5),
     ])
 
     validation_transforms = Compose([
-        ClipAndScale(None, None, [0, 1]),
+        RandomLUT(),
+        # ClipAndScale(None, None, [0, 1]),
         CropAroundBbox((1, 1024, 1024))
     ])
 
-    train_set = MammoDataset(training_description, data_source, transform=train_transforms, cache_dir='/tmp/train')
-    validation_set = MammoDataset(validation_description, data_source, transform=train_transforms, cache_dir='/tmp/validate')
-    logger.info(f'Train dataset size: {len(train_set)}. '
-                f'Validation data size: {len(validation_set)}.')
+    return train_transforms, validation_transforms
 
+
+def build_samplers(training_set, validation_set, use_weights):
     # Build samplers
     # TODO: Build a custom sampler which can be set differently.
     is_distributed = cfg.MULTIGPU == 2
     if use_weights:
         train_sampler = build_sampler(
             # TODO: Weights
-            train_set, 'weighted_random', weights=None, is_distributed=is_distributed)
+            training_set, 'weighted_random', weights=None, is_distributed=is_distributed)
     else:
-        train_sampler = build_sampler(train_set, 'random', weights=False, is_distributed=is_distributed)
+        train_sampler = build_sampler(training_set, 'random', weights=False, is_distributed=is_distributed)
     validation_sampler = build_sampler(validation_set, 'sequential', weights=False, is_distributed=is_distributed)
 
+    return train_sampler, validation_sampler
+
+
+def init_train_data(args, cfg, data_source, use_weights=True):
+    training_description, validation_description = build_datasets(data_source)
+    train_transforms, validation_transforms = build_transforms()
+
+    training_set = MammoDataset(training_description, data_source, transform=train_transforms, cache_dir='/tmp/train')
+    validation_set = MammoDataset(validation_description, data_source, transform=validation_transforms, cache_dir='/tmp/validate')
+    logger.info(f'Train dataset size: {len(training_set)}. '
+                f'Validation data size: {len(validation_set)}.')
+
+    train_sampler, validation_sampler = build_samplers(training_set, validation_set, use_weights)
+
     train_loader = DataLoader(
-        dataset=train_set,
+        dataset=training_set,
         batch_size=cfg.BATCH_SZ,
         sampler=train_sampler,
         num_workers=args.num_workers,
@@ -308,7 +317,7 @@ def init_train_data(args, cfg, data_source, use_weights=True):
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    return train_loader, train_sampler, train_set, eval_loader, validation_sampler
+    return train_loader, train_sampler, training_set, eval_loader, validation_sampler
 
 
 def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
@@ -354,7 +363,7 @@ def main(args):
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
     cfg_from_file(args.cfg)
-    exp_path = os.path.join(cfg.EXP_DIR, args.name)
+    exp_path = args.experiment_directory / args.name
     if args.local_rank == 0:
         print('Creating directories.')
         os.makedirs(cfg.INPUT_DIR, exist_ok=True)
@@ -434,7 +443,7 @@ def main(args):
             if args.local_rank == 0:
                 save_model(args, exp_path, epoch, model, optimizer, lr_scheduler)
                 logger.info(
-                    f'Epoch = [{epoch:4d}/{cfg.N_EPOCHS:4d}] TrainLoss = {train_loss:.4g} '
+                    f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] TrainLoss = {train_loss:.4g} '
                     f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '
                     f'TrainTime = {train_time:.4f}s DevTime = {dev_time:.4f}s',
                 )

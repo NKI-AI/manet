@@ -112,7 +112,7 @@ class MammoDataset(Dataset):
         stage = data_dict['class']
 
         mammogram = read_mammogram(image_fn)
-        mammogram = mammogram.data[np.newaxis, ...]
+        #mammogram = mammogram.data[np.newaxis, ...]
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
 
         sample = {
