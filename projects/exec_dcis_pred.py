@@ -45,7 +45,7 @@ random.seed(3145)
 torch.manual_seed(3145)
 
 
-def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
+def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
     model.train()
     avg_loss = 0.
     avg_dice = 0.
@@ -56,6 +56,10 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     optimizer.zero_grad()
 
     for iter_idx, batch in enumerate(data_loader):
+        if debug:
+            if iter_idx == 1:
+                break
+
         images = batch['image'].to(args.device)
         masks = batch['mask'].to(args.device)
         ground_truth = [masks]
@@ -112,8 +116,10 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-        
+
+        # TODO: Dice function does not accept batches
         train_dice = dice_fn(F.softmax(output[0], 1)[0, 1, ...], masks)
+
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}
@@ -162,7 +168,6 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 ground_truth += batch['class'].to(args.device)
 
             output = ensure_list(model(images))
-
             output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
 
             if iter_idx < 1:
@@ -187,7 +192,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
 
-            batch_dice = dice_fn(output_softmax[0, 1, ...], masks)
+            batch_dice = dice_fn(output_softmax[:, 1, ...], masks)
             dices.append(batch_dice.item())
             del output
 
@@ -220,7 +225,7 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
     if validation_set:
         validation_loader = DataLoader(
             dataset=validation_set,
-            batch_size=2 * batch_size,
+            batch_size=batch_size,  # TODO: fix this once dice is fixed.
             sampler=validation_sampler,
             num_workers=args.num_workers,
             pin_memory=True,
@@ -228,41 +233,41 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
         return training_loader, validation_loader
     return training_loader
 
-
-def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path, is_distributed):
-    eval_sampler = build_samplers(dataset, 'sequential', weights=False, is_distributed=is_distributed)
-    eval_loader = DataLoader(
-        dataset=dataset,
-        batch_size=cfg.BATCH_SZ,
-        sampler=eval_sampler,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
-    dev_loss, dev_dice, dev_time, losses = evaluate(
-        args, epoch, model, eval_loader, writer, exp_path, return_losses=True)
-
-    idx_losses = list(enumerate(losses))
-    idx_losses = sorted(idx_losses, key=lambda v: -v[1])
-    new_weights = np.ones(len(dataset))
-    PERCENTILE = 0.1
-    SCALE = 2.0
-
-    for idx in range(int(len(idx_losses) * PERCENTILE)):
-        n_idx, _ = idx_losses[idx]
-        new_weights[n_idx] *= SCALE
-        new_weights /= len(new_weights)
-
-    train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distributed)
-    if cfg.MULTIGPU == 2:
-        train_sampler.set_epoch(epoch)
-    train_loader = DataLoader(
-        dataset=dataset,
-        batch_size=cfg.BATCH_SZ,
-        sampler=train_sampler,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
-    return train_loader, train_sampler
+#
+# def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path, is_distributed):
+#     eval_sampler = build_samplers(dataset, 'sequential', weights=False, is_distributed=is_distributed)
+#     eval_loader = DataLoader(
+#         dataset=dataset,
+#         batch_size=cfg.BATCH_SZ,
+#         sampler=eval_sampler,
+#         num_workers=args.num_workers,
+#         pin_memory=True,
+#     )
+#     dev_loss, dev_dice, dev_time, losses = evaluate(
+#         args, epoch, model, eval_loader, writer, exp_path, return_losses=True)
+#
+#     idx_losses = list(enumerate(losses))
+#     idx_losses = sorted(idx_losses, key=lambda v: -v[1])
+#     new_weights = np.ones(len(dataset))
+#     PERCENTILE = 0.1
+#     SCALE = 2.0
+#
+#     for idx in range(int(len(idx_losses) * PERCENTILE)):
+#         n_idx, _ = idx_losses[idx]
+#         new_weights[n_idx] *= SCALE
+#         new_weights /= len(new_weights)
+#
+#     train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distributed)
+#     if cfg.MULTIGPU == 2:
+#         train_sampler.set_epoch(epoch)
+#     train_loader = DataLoader(
+#         dataset=dataset,
+#         batch_size=cfg.BATCH_SZ,
+#         sampler=train_sampler,
+#         num_workers=args.num_workers,
+#         pin_memory=True,
+#     )
+#     return train_loader, train_sampler
 
 
 def main(args):
@@ -333,7 +338,8 @@ def main(args):
                                      warmup_iters=int(0.5 * len(training_loader)), warmup_method='linear')
 
     # Load model
-    start_epoch = load_model(args, exp_path, model, optimizer, args.resume, lr_scheduler)
+    # TODO: Amp requires loading the state dict
+    start_epoch = load_model(exp_path, model, optimizer, lr_scheduler, args.resume, checkpoint_fn=args.checkpoint)
     epoch = start_epoch
     logger.info(f'Starting at epoch {epoch}.')
 
@@ -362,7 +368,7 @@ def main(args):
                 args, epoch, model, validation_loader, writer, exp_path, return_losses=False)
 
             if args.local_rank == 0:
-                save_model(args, exp_path, epoch, model, optimizer, lr_scheduler)
+                save_model(exp_path, epoch, model, optimizer, lr_scheduler)
                 logger.info(
                     f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] TrainLoss = {train_loss:.4g} '
                     f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '
