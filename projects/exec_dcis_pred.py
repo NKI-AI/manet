@@ -21,22 +21,21 @@ from apex import amp
 
 from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
+from manet.nn import build_model
 from manet.nn.common.tensor_ops import reduce_tensor_dict
+from manet.nn.training.losses import build_losses
 from manet.nn.training.lr_scheduler import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
-from manet.data.mammo_data import MammoDataset
-from manet.data.transforms import CropAroundBbox, build_transforms
-from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
-from manet.nn.training.sampler import build_sampler
+from manet.data.mammo_data import MammoDataset, build_datasets
+from manet.data.transforms import build_transforms
+from manet.nn.training.sampler import build_samplers
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
 from manet.utils import ensure_list
 from fexp.plotting import plot_2d
 
 import torch.nn.functional as F
-
-from fexp.utils.io import read_list, read_json
 
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
@@ -209,54 +208,6 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start
 
 
-def build_losses(use_classifier=False):
-    loss_fns = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
-
-    if use_classifier:
-        loss_fns += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
-
-    return loss_fns
-
-
-def build_model(device, use_classifier=False):
-    if use_classifier:
-        model = None
-
-    else:
-        model = UnetModel2d(
-            1, 2, (1024, 1024), 64, 4, 0.1).to(device)
-
-    return model
-
-
-def build_datasets(data_source):
-    # Assume the description file, a training set and a validation set are linked in the main directory.
-    train_list = read_list(data_source / 'training_set.txt')
-    validation_list = read_list(data_source / 'validation_set.txt')
-
-    mammography_description = read_json(data_source / 'dataset_description.json')
-
-    training_description = {k: v for k, v in mammography_description.items() if k in train_list}
-    validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
-
-    return training_description, validation_description
-
-
-def build_samplers(training_set, validation_set, use_weights):
-    # Build samplers
-    # TODO: Build a custom sampler which can be set differently.
-    is_distributed = cfg.MULTIGPU == 2
-    if use_weights:
-        train_sampler = build_sampler(
-            # TODO: Weights
-            training_set, 'weighted_random', weights=None, is_distributed=is_distributed)
-    else:
-        train_sampler = build_sampler(training_set, 'random', weights=False, is_distributed=is_distributed)
-    validation_sampler = build_sampler(validation_set, 'sequential', weights=False, is_distributed=is_distributed)
-
-    return train_sampler, validation_sampler
-
-
 def build_dataloader(batch_size, training_set, training_sampler, validation_set=None, validation_sampler=None):
     training_loader = DataLoader(
         dataset=training_set,
@@ -278,9 +229,8 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
     return training_loader
 
 
-def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
-    is_distr = (cfg.MULTIGPU == 2)
-    eval_sampler = build_sampler(dataset, 'sequential', weights=False, is_distributed=is_distr)
+def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path, is_distributed):
+    eval_sampler = build_samplers(dataset, 'sequential', weights=False, is_distributed=is_distributed)
     eval_loader = DataLoader(
         dataset=dataset,
         batch_size=cfg.BATCH_SZ,
@@ -302,7 +252,7 @@ def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
         new_weights[n_idx] *= SCALE
         new_weights /= len(new_weights)
 
-    train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distr)
+    train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distributed)
     if cfg.MULTIGPU == 2:
         train_sampler.set_epoch(epoch)
     train_loader = DataLoader(
@@ -361,6 +311,7 @@ def main(args):
         opt_level = f'O{cfg.APEX}'
         logger.info(f'Using apex level {opt_level}')
         model, optimizer = amp.initialize(model, optimizer, opt_level=opt_level)
+    is_distributed = (cfg.MULTIGPU == 2)
 
     # Create dataset and initializer LR scheduler
     logger.info('Creating datasets.')
@@ -371,7 +322,8 @@ def main(args):
     validation_set = MammoDataset(validation_description, args.data_source, transform=validation_transforms)
     logger.info(f'Train dataset size: {len(training_set)}. '
                 f'Validation data size: {len(validation_set)}.')
-    training_sampler, validation_sampler = build_samplers(training_set, validation_set, use_weights=False)
+    training_sampler, validation_sampler = build_samplers(
+        training_set, validation_set, use_weights=False, is_distributed=is_distributed)
     training_loader, validation_loader = build_dataloader(
         cfg.BATCH_SZ, training_set, training_sampler, validation_set, validation_sampler)
 

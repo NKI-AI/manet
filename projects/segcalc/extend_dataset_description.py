@@ -16,6 +16,17 @@ from fexp.readers import read_image
 from fexp.utils.bbox import bounding_box
 from tqdm import tqdm
 
+# TODO: Add description check
+# def __description_checksum(self):
+#     # https://stackoverflow.com/a/42148379
+#     checksum = 0
+#     for item in self.dataset_description.items():
+#         c1 = 1
+#         for _ in item:
+#             c1 = zlib.adler32(bytes(repr(_), 'utf-8'), c1)
+#         checksum = checksum ^ c1
+#     return checksum
+
 
 def read_metadata(dicom_fn):
     """Extracts the following metadata:

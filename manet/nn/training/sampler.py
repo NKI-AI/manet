@@ -14,6 +14,7 @@ from torch.utils.data.sampler import Sampler
 import logging
 import math
 
+
 class DistributedWeightedSampler(Sampler):
     def __init__(self, dataset, num_replicas=None, rank=None, shuffle=True):
         """
@@ -87,10 +88,11 @@ class DistributedWeightedSampler(Sampler):
         self.epoch = epoch
 
     def set_weights(self, weights):
+        raise NotImplementedError(f'Likely to be buggy. Check https://github.com/AIIMLab/DCIS-mammography/issues/3')
         self.weights = torch.tensor(weights, dtype=torch.double)
 
 
-def build_sampler(dataset, sampler, weights=False, is_distributed=False):
+def _build_sampler(dataset, sampler, weights=False, is_distributed=False):
     if sampler == 'random':
         if is_distributed:
             sampler = DistributedSampler(dataset, shuffle=True)
@@ -112,3 +114,18 @@ def build_sampler(dataset, sampler, weights=False, is_distributed=False):
         raise NotImplementedError(f'Sampler {sampler} not implemented.')
 
     return sampler
+
+
+def build_samplers(training_set, validation_set, use_weights, is_distributed):
+    # Build samplers
+    # TODO: Build a custom sampler which can be set differently.
+    # TODO: Merge with the above function.
+    if use_weights:
+        train_sampler = _build_sampler(
+            # TODO: Weights
+            training_set, 'weighted_random', weights=None, is_distributed=is_distributed)
+    else:
+        train_sampler = _build_sampler(training_set, 'random', weights=False, is_distributed=is_distributed)
+    validation_sampler = _build_sampler(validation_set, 'sequential', weights=False, is_distributed=is_distributed)
+
+    return train_sampler, validation_sampler
