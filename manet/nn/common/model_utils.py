@@ -51,11 +51,11 @@ def save_model(args, exp_dir, epoch, model, optimizer, lr_scheduler, name='model
         f.write(str(epoch))
 
 
-def load_model(args, exp_dir, model, optimizer, lr_scheduler, name='model'):
+def load_model(args, exp_dir, model, optimizer, lr_scheduler, resume, name='model'):
     start_epoch = 0
     checkpoint_fn = args.checkpoint if args.checkpoint else None
     last_model_text_path = os.path.join(exp_dir, 'last_model.txt')
-    if args.resume:
+    if resume:
         logger.info('Trying to resume training...')
         if os.path.exists(last_model_text_path):
             with open(last_model_text_path, 'r') as f:
@@ -69,7 +69,7 @@ def load_model(args, exp_dir, model, optimizer, lr_scheduler, name='model'):
         logger.info(f'Loading model {checkpoint_fn}.')
         checkpoint = torch.load(checkpoint_fn, map_location=lambda storage, loc: storage)
         model.load_state_dict(checkpoint['model'])
-        if args.resume and os.path.exists(last_model_text_path):
+        if resume and os.path.exists(last_model_text_path):
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             start_epoch = checkpoint['epoch'] + 1

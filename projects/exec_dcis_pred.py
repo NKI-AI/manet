@@ -26,10 +26,8 @@ from manet.nn.training.lr_scheduler import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
 from manet.data.mammo_data import MammoDataset
-from manet.data.transforms import CropAroundBbox, RandomLUT, RandomShiftBbox, RandomFlipTransform
-from fexp.transforms import Compose, ClipAndScale
+from manet.data.transforms import CropAroundBbox, build_transforms
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
-from manet.nn.unet.unet_classifier import UnetModel2dClassifier
 from manet.nn.training.sampler import build_sampler
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
@@ -244,25 +242,6 @@ def build_datasets(data_source):
     return training_description, validation_description
 
 
-def build_transforms():
-    # Build datasets
-    train_transforms = Compose([
-        RandomLUT(),
-        # ClipAndScale(None, None, [0, 1]),
-        RandomShiftBbox([100, 100]),
-        CropAroundBbox((1, 1024, 1024)),
-        RandomFlipTransform(0.5),
-    ])
-
-    validation_transforms = Compose([
-        RandomLUT(),
-        # ClipAndScale(None, None, [0, 1]),
-        CropAroundBbox((1, 1024, 1024))
-    ])
-
-    return train_transforms, validation_transforms
-
-
 def build_samplers(training_set, validation_set, use_weights):
     # Build samplers
     # TODO: Build a custom sampler which can be set differently.
@@ -278,32 +257,25 @@ def build_samplers(training_set, validation_set, use_weights):
     return train_sampler, validation_sampler
 
 
-def init_train_data(args, cfg, data_source, use_weights=True):
-    training_description, validation_description = build_datasets(data_source)
-    train_transforms, validation_transforms = build_transforms()
-
-    training_set = MammoDataset(training_description, data_source, transform=train_transforms)
-    validation_set = MammoDataset(validation_description, data_source, transform=validation_transforms)
-    logger.info(f'Train dataset size: {len(training_set)}. '
-                f'Validation data size: {len(validation_set)}.')
-
-    train_sampler, validation_sampler = build_samplers(training_set, validation_set, use_weights)
-
-    train_loader = DataLoader(
+def build_dataloader(batch_size, training_set, training_sampler, validation_set=None, validation_sampler=None):
+    training_loader = DataLoader(
         dataset=training_set,
-        batch_size=cfg.BATCH_SZ,
-        sampler=train_sampler,
+        batch_size=batch_size,
+        sampler=training_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    eval_loader = DataLoader(
-        dataset=validation_set,
-        batch_size=cfg.BATCH_SZ,
-        sampler=validation_sampler,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
-    return train_loader, train_sampler, training_set, eval_loader, validation_sampler
+
+    if validation_set:
+        validation_loader = DataLoader(
+            dataset=validation_set,
+            batch_size=2 * batch_size,
+            sampler=validation_sampler,
+            num_workers=args.num_workers,
+            pin_memory=True,
+        )
+        return training_loader, validation_loader
+    return training_loader
 
 
 def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
@@ -392,14 +364,24 @@ def main(args):
 
     # Create dataset and initializer LR scheduler
     logger.info('Creating datasets.')
-    train_loader, train_sampler, train_set, eval_loader, eval_sampler = init_train_data(args, cfg, args.data_source, use_weights=False)
-    solver_steps = [_ * len(train_loader) for _ in
+    training_description, validation_description = build_datasets(args.data_source)
+    training_transforms, validation_transforms = build_transforms()
+
+    training_set = MammoDataset(training_description, args.data_source, transform=training_transforms)
+    validation_set = MammoDataset(validation_description, args.data_source, transform=validation_transforms)
+    logger.info(f'Train dataset size: {len(training_set)}. '
+                f'Validation data size: {len(validation_set)}.')
+    training_sampler, validation_sampler = build_samplers(training_set, validation_set, use_weights=False)
+    training_loader, validation_loader = build_dataloader(
+        cfg.BATCH_SZ, training_set, training_sampler, validation_set, validation_sampler)
+
+    solver_steps = [_ * len(training_loader) for _ in
                     range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
     lr_scheduler = WarmupMultiStepLR(optimizer, solver_steps, cfg.LR_GAMMA, warmup_factor=1 / 10.,
-                                     warmup_iters=int(0.5 * len(train_loader)), warmup_method='linear')
+                                     warmup_iters=int(0.5 * len(training_loader)), warmup_method='linear')
 
     # Load model
-    start_epoch = load_model(args, exp_path, model, optimizer, lr_scheduler)
+    start_epoch = load_model(args, exp_path, model, optimizer, args.resume, lr_scheduler)
     epoch = start_epoch
     logger.info(f'Starting at epoch {epoch}.')
 
@@ -420,12 +402,12 @@ def main(args):
     if args.train:
         for epoch in range(start_epoch, cfg.N_EPOCHS):
             if cfg.MULTIGPU == 2:
-                train_sampler.set_epoch(epoch)
+                training_sampler.set_epoch(epoch)
 
-            train_loss, train_time = train_epoch(args, epoch, model, train_loader, optimizer, lr_scheduler, writer)
+            train_loss, train_time = train_epoch(args, epoch, model, training_loader, optimizer, lr_scheduler, writer)
 
             dev_loss, dev_dice, dev_time = evaluate(
-                args, epoch, model, eval_loader, writer, exp_path, return_losses=False)
+                args, epoch, model, validation_loader, writer, exp_path, return_losses=False)
 
             if args.local_rank == 0:
                 save_model(args, exp_path, epoch, model, optimizer, lr_scheduler)
@@ -441,7 +423,7 @@ def main(args):
 
     # Test model if necessary
     if args.test:
-        dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, eval_loader, writer, exp_path)
+        dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, validation_loader, writer, exp_path)
         logger.info(
             f'Epoch = [{epoch:4d}/{cfg.N_EPOCHS:4d}] '
             f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '

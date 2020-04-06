@@ -6,6 +6,7 @@ LICENSE file in the root directory of this source tree.
 """
 import numpy as np
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
+from fexp.transforms import Compose, RandomTransform
 
 
 class CropAroundBbox:
@@ -136,3 +137,23 @@ class RandomLUT:
 
         sample['image'] = mammogram.image[np.newaxis, ...].astype(np.float32)
         return sample
+
+
+def build_transforms():
+    training_transforms = Compose([
+        RandomLUT(),
+        RandomShiftBbox([100, 100]),
+        CropAroundBbox((1, 1024, 1024)),
+        RandomFlipTransform(0.5),
+        RandomTransform([
+            RandomGammaTransform((0.8, 1.2)),
+            RandomGaussianNoise(0.05, as_percentage=True)]),
+    ])
+
+    validation_transforms = Compose([
+        RandomLUT(),
+        # ClipAndScale(None, None, [0, 1]),
+        CropAroundBbox((1, 1024, 1024))
+    ])
+
+    return training_transforms, validation_transforms
