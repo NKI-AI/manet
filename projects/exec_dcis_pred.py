@@ -73,7 +73,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
             image_arr = images.detach().cpu().numpy()[0, 0, ...]
             masks_arr = masks.detach().cpu().numpy()[0, ...]
-            logger.info(f'Image min: {image_arr.min()} Image max: {image_arr.max()}')
 
             # image_grid = torchvision.utils.make_grid(images)
             # mask_grid = torchvision.utils.make_grid(masks)
@@ -116,7 +115,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-
+        
         train_dice = dice_fn(F.softmax(output[0], 1)[0, 1, ...], masks)
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
