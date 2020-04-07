@@ -3,19 +3,14 @@ Copyright (c) Nikita Moriakov and Jonas Teuwen
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
-
-
 import logging
 import pathlib
-import hashlib
 import numpy as np
-import zlib
 
 from manet.utils.readers import read_mammogram
 from torch.utils.data import Dataset
 from fexp.readers import read_image
 
-from fexp.utils.bbox import bounding_box
 from fexp.utils.io import read_json, write_json, read_list, write_list
 
 logger = logging.getLogger(__name__)
@@ -30,7 +25,6 @@ class MammoDataset(Dataset):
         self.cache_dir = pathlib.Path(cache_dir)
 
         self.filter_negatives = True
-        #self.use_bounding_boxes = True
 
         if isinstance(dataset_description, (str, pathlib.Path)):
             self.logger.info(f'Loading dataset description from file {dataset_description}.')
@@ -38,7 +32,6 @@ class MammoDataset(Dataset):
         self.dataset_description = dataset_description
 
         self.data = []
-        labels = []
 
         self._cache_valid = True
         self.validate_cache()  # Pass
@@ -57,7 +50,6 @@ class MammoDataset(Dataset):
                     if self.filter_negatives and 'label' in image_dict:
                         label_fn = pathlib.Path(image_dict['label'])
                         label_fns = image_dict['label'] #because pathlib.path not json serializable
-                        labels.append(label_fns)
                         curr_data_dict['label_fn'] = label_fns
 
                         if 'bbox' not in image_dict:
@@ -69,7 +61,6 @@ class MammoDataset(Dataset):
 
                         self.data.append(curr_data_dict)
                         write_json(data_cache, curr_data_dict)
-                        write_list('list_labels', labels)
                     else:
                         NotImplementedError()
 
@@ -112,7 +103,6 @@ class MammoDataset(Dataset):
         stage = data_dict['class']
 
         mammogram = read_mammogram(image_fn)
-        #mammogram = mammogram.data[np.newaxis, ...]
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
 
         sample = {
@@ -131,3 +121,16 @@ class MammoDataset(Dataset):
 
     def __len__(self):
         return len(self.data)
+
+
+def build_datasets(data_source):
+    # Assume the description file, a training set and a validation set are linked in the main directory.
+    train_list = read_list(data_source / 'training_set.txt')
+    validation_list = read_list(data_source / 'validation_set.txt')
+
+    mammography_description = read_json(data_source / 'dataset_description.json')
+
+    training_description = {k: v for k, v in mammography_description.items() if k in train_list}
+    validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
+
+    return training_description, validation_description

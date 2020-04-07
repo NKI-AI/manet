@@ -7,6 +7,7 @@ LICENSE file in the root directory of this source tree.
 """
 import sys
 import os
+
 import numpy as np
 import logging
 import time
@@ -21,16 +22,15 @@ from apex import amp
 
 from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
+from manet.nn import build_model
 from manet.nn.common.tensor_ops import reduce_tensor_dict
+from manet.nn.training.losses import build_losses
 from manet.nn.training.lr_scheduler import WarmupMultiStepLR, build_optim
 from manet.nn.common.losses import HardDice
 from manet.nn.common.model_utils import load_model, save_model
-from manet.data.mammo_data import MammoDataset
-from manet.data.transforms import CropAroundBbox, RandomLUT, RandomShiftBbox, RandomFlipTransform
-from fexp.transforms import Compose, ClipAndScale
-from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
-from manet.nn.unet.unet_classifier import UnetModel2dClassifier
-from manet.nn.training.sampler import build_sampler
+from manet.data.mammo_data import MammoDataset, build_datasets
+from manet.data.transforms import build_transforms
+from manet.nn.training.sampler import build_samplers
 from manet.sys.logging import setup
 from manet.sys import multi_gpu
 from manet.utils import ensure_list
@@ -48,7 +48,7 @@ random.seed(3145)
 torch.manual_seed(3145)
 
 
-def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False):
+def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
     segmentation_path = pathlib.Path(args.experiment_directory) / args.name / 'segmentations'
     
     model.train()
@@ -61,9 +61,12 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     optimizer.zero_grad()
 
     for iter_idx, batch in enumerate(data_loader):
+        if debug:
+            if iter_idx == 1:
+                break
+
         images = batch['mammogram'].to(args.device)
         masks = batch['mask'].to(args.device)
-
         ground_truth = [masks]
         if use_classifier:
             ground_truth += batch['class'].to(args.device)
@@ -76,7 +79,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
             image_arr = images.detach().cpu().numpy()[0, 0, ...]
             masks_arr = masks.detach().cpu().numpy()[0, ...]
-            logger.info(f'Image min: {image_arr.min()} Image max: {image_arr.max()}')
 
             # image_grid = torchvision.utils.make_grid(images)
             # mask_grid = torchvision.utils.make_grid(masks)
@@ -96,11 +98,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
         output = ensure_list(model(images))
 
-        #losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]).to(args.device)
         losses = [loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
-        #losses.requires_grad_(True)
         train_loss += sum(losses)
-        #train_loss.requires_grad_(True)
 
         # Backprop the loss, use APEX if necessary
         if cfg.APEX >= 0:
@@ -108,6 +107,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 scaled_loss.backward()
         else:
             train_loss.backward()
+
         if torch.isnan(train_loss).any():
             logger.critical(f'Nan loss detected. Stopping training.')
             sys.exit()
@@ -126,7 +126,9 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             lr_scheduler.step()
             optimizer.zero_grad()
 
+        # TODO: Dice function does not accept batches
         train_dice = dice_fn(F.softmax(output[0], 1)[0, 1, ...], masks)
+
         avg_loss = (iter_idx * avg_loss + train_loss.item()) / (iter_idx + 1) if iter_idx > 0 else train_loss.item()
         avg_dice = (iter_idx * avg_dice + train_dice.item()) / (iter_idx + 1) if iter_idx > 0 else train_dice.item()
         metric_dict = {'TrainLoss': train_loss, 'TrainDice': train_dice}
@@ -155,7 +157,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
     return avg_loss, time.perf_counter() - start_epoch
 
-
 def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
     segmentation_path = pathlib.Path(args.experiment_directory) / args.name / 'segmentations'
     logger.info(f'Evaluation for epoch {epoch}')
@@ -177,7 +178,6 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 ground_truth += batch['class'].to(args.device)
 
             output = ensure_list(model(images))
-
             output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
 
             if iter_idx < 1:
@@ -205,7 +205,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
 
-            batch_dice = dice_fn(output_softmax[0, 1, ...], masks)
+            batch_dice = dice_fn(output_softmax[:, 1, ...], masks)
             dices.append(batch_dice.item())
             del output
 
@@ -226,135 +226,61 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start
 
 
-def build_losses(use_classifier=False):
-    loss_fns = [torch.nn.CrossEntropyLoss(weight=None, reduction='mean')]
-
-    if use_classifier:
-        loss_fns += torch.nn.CrossEntropyLoss(weight=None, reduction='mean')
-
-    return loss_fns
-
-
-def build_model(device, use_classifier=False):
-    if use_classifier:
-        model = None
-    else:
-        model = UnetModel2d(
-            1, 2, (1024, 1024), 64, 4, 0.1).to(device)
-
-    return model
-
-
-def build_datasets(data_source):
-    # Assume the description file, a training set and a validation set are linked in the main directory.
-    train_list = read_list(data_source / 'training_set.txt')
-    validation_list = read_list(data_source / 'validation_set.txt')
-
-    mammography_description = read_json(data_source / 'dataset_description.json')
-
-    training_description = {k: v for k, v in mammography_description.items() if k in train_list}
-    validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
-
-    return training_description, validation_description
-
-
-def build_transforms():
-    # Build datasets
-    train_transforms = Compose([
-        RandomLUT(),
-        # ClipAndScale(None, None, [0, 1]),
-        RandomShiftBbox([100, 100]),
-        CropAroundBbox((1, 1024, 1024)),
-        RandomFlipTransform(0.5),
-    ])
-
-    validation_transforms = Compose([
-        RandomLUT(),
-        # ClipAndScale(None, None, [0, 1]),
-        CropAroundBbox((1, 1024, 1024))
-    ])
-
-    return train_transforms, validation_transforms
-
-
-def build_samplers(training_set, validation_set, use_weights):
-    # Build samplers
-    # TODO: Build a custom sampler which can be set differently.
-    is_distributed = cfg.MULTIGPU == 2
-    if use_weights:
-        train_sampler = build_sampler(
-            # TODO: Weights
-            training_set, 'weighted_random', weights=None, is_distributed=is_distributed)
-    else:
-        train_sampler = build_sampler(training_set, 'random', weights=False, is_distributed=is_distributed)
-    validation_sampler = build_sampler(validation_set, 'sequential', weights=False, is_distributed=is_distributed)
-
-    return train_sampler, validation_sampler
-
-
-def init_train_data(args, cfg, data_source, use_weights=True):
-    training_description, validation_description = build_datasets(data_source)
-    train_transforms, validation_transforms = build_transforms()
-
-    training_set = MammoDataset(training_description, data_source, transform=train_transforms, cache_dir='/tmp/train')
-    validation_set = MammoDataset(validation_description, data_source, transform=validation_transforms, cache_dir='/tmp/validate')
-    logger.info(f'Train dataset size: {len(training_set)}. '
-                f'Validation data size: {len(validation_set)}.')
-
-    train_sampler, validation_sampler = build_samplers(training_set, validation_set, use_weights)
-
-    train_loader = DataLoader(
+def build_dataloader(batch_size, training_set, training_sampler, validation_set=None, validation_sampler=None):
+    training_loader = DataLoader(
         dataset=training_set,
-        batch_size=cfg.BATCH_SZ,
-        sampler=train_sampler,
+        batch_size=batch_size,
+        sampler=training_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    eval_loader = DataLoader(
-        dataset=validation_set,
-        batch_size=cfg.BATCH_SZ,
-        sampler=validation_sampler,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
-    return train_loader, train_sampler, training_set, eval_loader, validation_sampler
 
+    if validation_set:
+        validation_loader = DataLoader(
+            dataset=validation_set,
+            batch_size=batch_size,  # TODO: fix this once dice is fixed.
+            sampler=validation_sampler,
+            num_workers=args.num_workers,
+            pin_memory=True,
+        )
+        return training_loader, validation_loader
+    return training_loader
 
-def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path):
-    is_distr = (cfg.MULTIGPU == 2)
-    eval_sampler = build_sampler(dataset, 'sequential', weights=False, is_distributed=is_distr)
-    eval_loader = DataLoader(
-        dataset=dataset,
-        batch_size=cfg.BATCH_SZ,
-        sampler=eval_sampler,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
-    dev_loss, dev_dice, dev_time, losses = evaluate(
-        args, epoch, model, eval_loader, writer, exp_path, return_losses=True)
-
-    idx_losses = list(enumerate(losses))
-    idx_losses = sorted(idx_losses, key=lambda v: -v[1])
-    new_weights = np.ones(len(dataset))
-    PERCENTILE = 0.1
-    SCALE = 2.0
-
-    for idx in range(int(len(idx_losses) * PERCENTILE)):
-        n_idx, _ = idx_losses[idx]
-        new_weights[n_idx] *= SCALE
-        new_weights /= len(new_weights)
-
-    train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distr)
-    if cfg.MULTIGPU == 2:
-        train_sampler.set_epoch(epoch)
-    train_loader = DataLoader(
-        dataset=dataset,
-        batch_size=cfg.BATCH_SZ,
-        sampler=train_sampler,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
-    return train_loader, train_sampler
+#
+# def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path, is_distributed):
+#     eval_sampler = build_samplers(dataset, 'sequential', weights=False, is_distributed=is_distributed)
+#     eval_loader = DataLoader(
+#         dataset=dataset,
+#         batch_size=cfg.BATCH_SZ,
+#         sampler=eval_sampler,
+#         num_workers=args.num_workers,
+#         pin_memory=True,
+#     )
+#     dev_loss, dev_dice, dev_time, losses = evaluate(
+#         args, epoch, model, eval_loader, writer, exp_path, return_losses=True)
+#
+#     idx_losses = list(enumerate(losses))
+#     idx_losses = sorted(idx_losses, key=lambda v: -v[1])
+#     new_weights = np.ones(len(dataset))
+#     PERCENTILE = 0.1
+#     SCALE = 2.0
+#
+#     for idx in range(int(len(idx_losses) * PERCENTILE)):
+#         n_idx, _ = idx_losses[idx]
+#         new_weights[n_idx] *= SCALE
+#         new_weights /= len(new_weights)
+#
+#     train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distributed)
+#     if cfg.MULTIGPU == 2:
+#         train_sampler.set_epoch(epoch)
+#     train_loader = DataLoader(
+#         dataset=dataset,
+#         batch_size=cfg.BATCH_SZ,
+#         sampler=train_sampler,
+#         num_workers=args.num_workers,
+#         pin_memory=True,
+#     )
+#     return train_loader, train_sampler
 
 
 def main(args):
@@ -369,7 +295,7 @@ def main(args):
         os.makedirs(cfg.INPUT_DIR, exist_ok=True)
         os.makedirs(exp_path, exist_ok=True)
         os.makedirs(os.path.join(exp_path, 'segmentations'), exist_ok=True)
-        writer = SummaryWriter(log_dir=os.path.join(exp_path, 'summary'))
+        writer = SummaryWriter(log_dir=os.path.join(exp_path, 'summary'))  #, datetime.datetime.now().strftime("%Y%m%d-%H%M%S")))
     else:
         time.sleep(1)
         writer = None
@@ -403,16 +329,30 @@ def main(args):
         opt_level = f'O{cfg.APEX}'
         logger.info(f'Using apex level {opt_level}')
         model, optimizer = amp.initialize(model, optimizer, opt_level=opt_level)
+    is_distributed = (cfg.MULTIGPU == 2)
 
     # Create dataset and initializer LR scheduler
     logger.info('Creating datasets.')
-    train_loader, train_sampler, train_set, eval_loader, eval_sampler = init_train_data(args, cfg, args.data_source, use_weights=False)
-    solver_steps = [_ * len(train_loader) for _ in
+    training_description, validation_description = build_datasets(args.data_source)
+    training_transforms, validation_transforms = build_transforms()
+
+    training_set = MammoDataset(training_description, args.data_source, transform=training_transforms, cache_dir='/tmp/train')
+    validation_set = MammoDataset(validation_description, args.data_source, transform=validation_transforms, cache_dir='/tmp/validate')
+    logger.info(f'Train dataset size: {len(training_set)}. '
+                f'Validation data size: {len(validation_set)}.')
+    training_sampler, validation_sampler = build_samplers(
+        training_set, validation_set, use_weights=False, is_distributed=is_distributed)
+    training_loader, validation_loader = build_dataloader(
+        cfg.BATCH_SZ, training_set, training_sampler, validation_set, validation_sampler)
+
+    solver_steps = [_ * len(training_loader) for _ in
                     range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
     lr_scheduler = WarmupMultiStepLR(optimizer, solver_steps, cfg.LR_GAMMA, warmup_factor=1 / 10.,
-                                     warmup_iters=int(0.5 * len(train_loader)), warmup_method='linear')
+                                     warmup_iters=int(0.5 * len(training_loader)), warmup_method='linear')
+
     # Load model
-    start_epoch = load_model(args, exp_path, model, optimizer, lr_scheduler)
+    # TODO: Amp requires loading the state dict
+    start_epoch = load_model(exp_path, model, optimizer, lr_scheduler, args.resume, checkpoint_fn=args.checkpoint)
     epoch = start_epoch
     logger.info(f'Starting at epoch {epoch}.')
 
@@ -433,15 +373,15 @@ def main(args):
     if args.train:
         for epoch in range(start_epoch, cfg.N_EPOCHS):
             if cfg.MULTIGPU == 2:
-                train_sampler.set_epoch(epoch)
+                training_sampler.set_epoch(epoch)
 
-            train_loss, train_time = train_epoch(args, epoch, model, train_loader, optimizer, lr_scheduler, writer)
+            train_loss, train_time = train_epoch(args, epoch, model, training_loader, optimizer, lr_scheduler, writer)
 
             dev_loss, dev_dice, dev_time = evaluate(
-                args, epoch, model, eval_loader, writer, exp_path, return_losses=False)
+                args, epoch, model, validation_loader, writer, exp_path, return_losses=False)
 
             if args.local_rank == 0:
-                save_model(args, exp_path, epoch, model, optimizer, lr_scheduler)
+                save_model(exp_path, epoch, model, optimizer, lr_scheduler)
                 logger.info(
                     f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] TrainLoss = {train_loss:.4g} '
                     f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '
@@ -454,7 +394,7 @@ def main(args):
 
     # Test model if necessary
     if args.test:
-        dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, eval_loader, writer, exp_path)
+        dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, validation_loader, writer, exp_path)
         logger.info(
             f'Epoch = [{epoch:4d}/{cfg.N_EPOCHS:4d}] '
             f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '

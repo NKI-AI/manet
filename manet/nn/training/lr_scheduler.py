@@ -28,6 +28,7 @@ class LRScheduler(torch.optim.lr_scheduler._LRScheduler):
         """
         return {key: value for key, value in self.__dict__.items() if key not in ['optimizer', 'logger']}
 
+
 # FIXME ideally this would be achieved with a CombinedLRScheduler,
 # separating MultiStepLR with WarmupLR
 # but the current LRScheduler design doesn't allow it
@@ -75,6 +76,7 @@ class WarmupMultiStepLR(LRScheduler):
 
     def state_dict(self):
         return {key: value for key, value in self.__dict__.items() if key not in ['optimizer', 'logger']}
+
 
 # From https://github.com/Harshvardhan1/cyclic-learning-schedulers-pytorch/blob/master/cyclicLR.py
 class CyclicLinearLR(LRScheduler):

@@ -6,6 +6,7 @@ LICENSE file in the root directory of this source tree.
 """
 import numpy as np
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
+from fexp.transforms import Compose, RandomTransform
 
 
 class CropAroundBbox:
@@ -20,6 +21,7 @@ class CropAroundBbox:
 
         sample['mammogram'] = crop_to_bbox(sample['mammogram'], new_bbox.squeeze(0))
         sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
+
         del sample['bbox']
         return sample
 
@@ -33,7 +35,9 @@ class RandomShiftBbox:
         bbox = BoundingBox(sample['bbox'])
         shift = np.random.randint(-self.max_shift, self.max_shift)
         new_bbox = (bbox + shift).astype(np.int)
+
         sample['bbox'] = new_bbox
+
         return sample
 
 
@@ -52,7 +56,7 @@ class RandomFlipTransform:
 
         sample['mammogram'] = np.flip(sample['mammogram'], axis=self.axis).copy()  # Fix once torch supports negative strides.
         if 'mask' in sample:
-            sample['mask'] = np.flip(sample['mask'], axis=self.axis).copy()
+            sample['mask'] = np.flip(sample['mask'], axis=self.axis).copy()  # Fix once torch supports negative strides.
 
         return sample
 
@@ -133,3 +137,23 @@ class RandomLUT:
 
         sample['mammogram'] = mammogram.image[np.newaxis, ...].astype(np.float32)
         return sample
+
+
+def build_transforms():
+    training_transforms = Compose([
+        RandomLUT(),
+        RandomShiftBbox([100, 100]),
+        CropAroundBbox((1, 1024, 1024)),
+        RandomFlipTransform(0.5),
+        RandomTransform([
+            RandomGammaTransform((0.8, 1.2)),
+            RandomGaussianNoise(0.05, as_percentage=True)]),
+    ])
+
+    validation_transforms = Compose([
+        RandomLUT(),
+        # ClipAndScale(None, None, [0, 1]),
+        CropAroundBbox((1, 1024, 1024))
+    ])
+
+    return training_transforms, validation_transforms
