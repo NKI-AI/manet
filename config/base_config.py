@@ -41,6 +41,7 @@ __C.UNET.NUM_AUG = 3
 __C.UNET.NOISE_STD = 0.05
 __C.UNET.GAMMA_RANGE = 0.4
 __C.UNET.AUG_INTERP = 'LINEAR'  # LINEAR or NEAREST
+__C.UNET.USE_CLASSIFIER = False
 
 
 # Training and debug output options

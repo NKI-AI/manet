@@ -146,7 +146,7 @@ def build_transforms():
         CropAroundBbox((1, 1024, 1024)),
         RandomFlipTransform(0.5),
         RandomTransform([
-            RandomGammaTransform((0.8, 1.2)),
+            RandomGammaTransform((0.9, 1.1)),
             RandomGaussianNoise(0.05, as_percentage=True)]),
     ])
 

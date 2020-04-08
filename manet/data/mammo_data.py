@@ -6,6 +6,8 @@ LICENSE file in the root directory of this source tree.
 import logging
 import pathlib
 import numpy as np
+import hashlib
+import zlib
 
 from manet.utils.readers import read_mammogram
 from torch.utils.data import Dataset

@@ -210,7 +210,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             del output
 
     metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
-                   'DevDice': torch.tensor(np.mean(dices)).to(args.device)}
+                   'DevDice': torch.tensor(np.mean(dices)).to(args.device)},
 
     if cfg.MULTIGPU == 2:
         torch.cuda.synchronize()
@@ -294,14 +294,14 @@ def main(args):
         print('Creating directories.')
         os.makedirs(cfg.INPUT_DIR, exist_ok=True)
         os.makedirs(exp_path, exist_ok=True)
-        os.makedirs(os.path.join(exp_path, 'segmentations'), exist_ok=True)
-        writer = SummaryWriter(log_dir=os.path.join(exp_path, 'summary'))  #, datetime.datetime.now().strftime("%Y%m%d-%H%M%S")))
+        os.makedirs(exp_path / 'segmentations', exist_ok=True)
+        writer = SummaryWriter(log_dir=exp_path / 'summary')
     else:
         time.sleep(1)
         writer = None
     log_name = args.name + f'_{args.local_rank}.log'
-    print('Logging into {}'.format(os.path.join(exp_path, log_name)))
-    setup(filename=os.path.join(exp_path, log_name), redirect_stderr=False, redirect_stdout=False,
+    print(f'Logging into {exp_path / log_name}')
+    setup(filename=exp_path / log_name, redirect_stderr=False, redirect_stdout=False,
           log_level=logging.INFO if not args.debug else logging.DEBUG)
     logger.info(vars(args))
 
@@ -315,7 +315,7 @@ def main(args):
         multi_gpu.synchronize()
 
     logger.info('Building model.')
-    model = build_model(args.device)
+    model = build_model(args.device, use_classifier=cfg.UNET.USE_CLASSIFIER)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)

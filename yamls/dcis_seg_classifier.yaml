@@ -6,7 +6,7 @@ BATCH_SZ: 1
 STARTER_LR: 0.00025
 UNET:
  AUG_LST: ['RandomShiftTransform', 'RandomZoomTransform']
- USE_CLASSIFIER: false
+ USE_CLASSIFIER: true
 OPTIMIZER: 'Adam'
 WEIGHT_DECAY: 0.0001
 HARD_MINING_FREQ: 1
