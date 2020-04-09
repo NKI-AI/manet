@@ -8,7 +8,7 @@ import torch
 
 
 def build_losses(use_classifier=False, multipliers=[1.0, 0.5], top_k=[0.05, None]):
-    reduction = ['mean' if _top_k is None else False for _top_k in top_k]
+    reduction = ['mean' if _top_k is None else 'none' for _top_k in top_k]
 
     loss_fns = [multipliers[0]*torch.nn.CrossEntropyLoss(weight=None, reduction=reduction[0])]
 

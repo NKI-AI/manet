@@ -9,7 +9,7 @@ import logging
 from manet.nn.unet.unet_fastmri_facebook import UnetModel2d
 from manet.nn.unet import unet_classifier
 
-logger = logging.logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def build_model(device, cfg=False, use_classifier=False):
