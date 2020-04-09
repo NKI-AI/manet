@@ -54,9 +54,10 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     model.train()
     avg_loss = 0.
     avg_dice = 0.
+    use_classifier = cfg.UNET.USE_CLASSIFIER
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = build_losses(use_classifier)
+    loss_fn, multipliers = build_losses(use_classifier)
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
@@ -70,6 +71,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         ground_truth = [masks]
         if use_classifier:
             ground_truth += batch['class'].to(args.device)
+            print('adding classes')
 
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
@@ -95,10 +97,9 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
         train_loss = torch.tensor(0.).to(args.device)
-
         output = ensure_list(model(images))
 
-        losses = [loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
+        losses = multipliers*[loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
         train_loss += sum(losses)
 
         # Backprop the loss, use APEX if necessary
@@ -165,7 +166,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     losses = []
     dices = []
     start = time.perf_counter()
-    loss_fn = build_losses(use_classifier)
+    loss_fn, multipliers = build_losses(use_classifier)
     dice_fn = HardDice(cls=1, binary_cls=True)
 
     with torch.no_grad():
@@ -202,7 +203,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
-            batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
+            batch_losses = torch.tensor(multipliers*[loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
 
             batch_dice = dice_fn(output_softmax[:, 1, ...], masks)
