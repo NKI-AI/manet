@@ -71,7 +71,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         ground_truth = [masks]
         if use_classifier:
             ground_truth += batch['class'].to(args.device)
-            print('adding classes')
 
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
