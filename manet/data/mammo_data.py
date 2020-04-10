@@ -103,6 +103,10 @@ class MammoDataset(Dataset):
         image_fn = self.data_root / pathlib.Path(data_dict['image_fn'])
         label_fn = self.data_root / pathlib.Path(data_dict['label_fn'])
         stage = data_dict['class']
+        if stage == 3:
+            b_stage = 1
+        else:
+            b_stage = 0
 
         mammogram = read_mammogram(image_fn)
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
@@ -113,7 +117,8 @@ class MammoDataset(Dataset):
             'bbox': data_dict['bbox'],
             'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
             'label_fn': str(label_fn),
-            'class': stage
+            'class': stage,
+            'b_class': b_stage
         }
 
         if self.transform:

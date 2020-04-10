@@ -70,7 +70,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         masks = batch['mask'].to(args.device)
         ground_truth = [masks]
         if use_classifier:
-            ground_truth += batch['class'].to(args.device)
+            #ground_truth += [batch['class'].to(args.device)]
+            ground_truth += [batch['b_class'].to(args.device)]
 
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
@@ -97,6 +98,9 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
         train_loss = torch.tensor(0.).to(args.device)
         output = ensure_list(model(images))
+
+        import pdb
+        pdb.set_trace()
 
         losses = multipliers*[loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
         train_loss += sum(losses)
