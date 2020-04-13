@@ -18,7 +18,6 @@ class CropAroundBbox:
 
         effective_output_size = self.output_size[-bbox.ndim:]
         new_bbox = bbox.bounding_box_around_center(effective_output_size).astype(int)
-
         sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
         sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
 
@@ -31,8 +30,7 @@ class RandomShiftBbox:
         self.max_shift = np.asarray(max_shift)
 
     def __call__(self, sample):
-        # TODO: fexp, if is already BoundingBox, casting is not needed.
-        bbox = BoundingBox(sample['bbox'])
+        bbox = BoundingBox(sample['bbox'])  # TODO: This should already be a bbox
         shift = np.random.randint(-self.max_shift, self.max_shift)
         new_bbox = (bbox + shift).astype(np.int)
 

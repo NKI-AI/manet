@@ -57,13 +57,12 @@ class MammoDataset(Dataset):
                         if 'DCIS_grade' not in image_dict:
                             self.logger.warning(f'Patient {patient} with study {study_id} has no DCIS grade but has a label.')
                             continue
-
                         if self.class_mapping:
                             class_label = self.class_mapping[image_dict['DCIS_grade']]
                         else:
                             class_label = image_dict['DCIS_grade']
 
-                        curr_data_dict['DCIS_grade'] = class_label
+                        curr_data_dict['class'] = class_label
                         curr_data_dict['bbox'] = image_dict['bbox']
 
                         self.data.append(curr_data_dict)
@@ -82,7 +81,7 @@ class MammoDataset(Dataset):
         label_fn = self.data_root / data_dict['label_fn']
 
         mammogram = read_mammogram(image_fn)
-        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
+        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)[0] # TODO: fix in fexp!  # int64 gets cast to LongTensor
 
         sample = {
             'mammogram': mammogram,
@@ -91,6 +90,8 @@ class MammoDataset(Dataset):
             'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
             'label_fn': str(label_fn),
         }
+        if 'class' in data_dict:
+             sample['class'] = np.asarray([data_dict['class']]).astype(np.int64)
 
         if self.transform:
             sample = self.transform(sample)
