@@ -214,9 +214,13 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
     return uid_mapping
 
 
-def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, create_links=True):
+def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, dcis_labels=None, create_links=True):
     output = defaultdict(dict)
     labels_found = []
+
+    dcis_dict = {}
+    if dcis_labels:
+        dcis_dict = {k.strip(): int(v.strip()) for k, v in dcis_labels.read_text.split('\n').split(' ')}
 
     for fn in mammograms:
         patient_id = mammograms[fn]['PatientID']
@@ -259,17 +263,20 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         # Do stuff here to link label.
 
         patient_id = curr_dict['PatientID']
+        if patient_id in dcis_dict:
+            curr_dict['DCIS_stage'] = dcis_dict[patient_id]
+        
         curr_dict['Original_PatientID'] = patient_id
         curr_dict['filename'] = str(new_fn)
         if label:
             curr_dict['label'] = label
-        curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
-        curr_dict['PatientID'] = patient_mapping[patient_id]
 
-        if not uid_mapping[study_instance_uid] in output[patient_id]:
-            output[patient_id][uid_mapping[study_instance_uid]] = [curr_dict]
+        new_patient_id = patient_mapping[patient_id]
+
+        if not uid_mapping[study_instance_uid] in output[new_patient_id]:
+            output[patient_mapping[new_patient_id]][uid_mapping[study_instance_uid]] = [curr_dict]
         else:
-            output[patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
+            output[new_patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
 
     write_list(labels_found, 'labels.log')
 
@@ -280,6 +287,8 @@ def main():
     parser = argparse.ArgumentParser(description='Process dataset into convenient format.')
     parser.add_argument('path', type=Path, help='Path to dataset')
     parser.add_argument('dest', type=Path, help='Destination directory')
+    parser.add_argument('--dcis-labels', type=Path, help='filename to labels filename.')
+
     parser.add_argument('--copy-data', action='store_true', help='Copy data instead of symlinking.')
     args = parser.parse_args()
 
@@ -295,7 +304,8 @@ def main():
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
     logging.info('Writing new directory structure. This can take a while.')
     new_mammograms = create_temporary_file_structure(
-        mammograms, patient_mapping, uid_mapping, args.dest, create_links=not args.copy_data)
+        mammograms, patient_mapping, uid_mapping,
+        args.dest, dcis_labels=args.dcis_labels, create_links=not args.copy_data)
 
     write_json(args.dest / 'dataset_description.json', new_mammograms)
     write_list(new_mammograms.keys(), args.dest / 'imported_studies.log')

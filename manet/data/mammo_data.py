@@ -44,7 +44,7 @@ class MammoDataset(Dataset):
             self.logger.debug(f'Parsing patient {patient} ({idx + 1}/{len(self.dataset_description)}).')
             for study_id in self.dataset_description[patient]:
                 for image_dict in self.dataset_description[patient][study_id]:
-                    class_label = image_dict['DCIS_stage']
+                    class_label = image_dict['DCIS_grade']
                     if self.class_mapping:
                         class_label = self.class_mapping[class_label]
 
