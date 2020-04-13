@@ -72,6 +72,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         if use_classifier:
             #ground_truth += [batch['class'].to(args.device)]
             ground_truth += [batch['b_class'].to(args.device)]
+            ground_truth[1].unsqueeze_(-1)
 
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
@@ -99,10 +100,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
         train_loss = torch.tensor(0.).to(args.device)
         output = ensure_list(model(images))
 
-        import pdb
-        pdb.set_trace()
-
-        losses = multipliers*[loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
+        losses = [multipliers*loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
         train_loss += sum(losses)
 
         # Backprop the loss, use APEX if necessary
@@ -163,7 +161,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
 def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
     segmentation_path = pathlib.Path(args.experiment_directory) / args.name / 'segmentations'
-    logger.info(f'Evaluation for epoch {epoch}')
+    use_classifier = cfg.UNET.USE_CLASSIFIER
+    logger.info(f'Evaluation for epoch {epoch + 1}')
     model.eval()
 
     losses = []
@@ -179,7 +178,8 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
             ground_truth = [masks]
             if use_classifier:
-                ground_truth += batch['class'].to(args.device)
+                ground_truth += [batch['b_class'].to(args.device)]
+                ground_truth[1].unsqueeze_(-1)
 
             output = ensure_list(model(images))
             output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
@@ -206,7 +206,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
-            batch_losses = torch.tensor(multipliers*[loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
+            batch_losses = torch.tensor([multipliers*loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
 
             batch_dice = dice_fn(output_softmax[:, 1, ...], masks)
@@ -214,7 +214,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             del output
 
     metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
-                   'DevDice': torch.tensor(np.mean(dices)).to(args.device)},
+                   'DevDice': torch.tensor(np.mean(dices)).to(args.device)}
 
     if cfg.MULTIGPU == 2:
         torch.cuda.synchronize()
