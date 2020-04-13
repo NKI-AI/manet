@@ -1,9 +1,9 @@
-FROM nvidia/cuda:10.1-cudnn7-devel
+FROM ubuntu:18.04
+# nvidia/cuda:10.1-cudnn7-devel
 
-ENV CUDA_PATH /usr/local/cuda
-ENV CUDA_ROOT /usr/local/cuda/bin
-ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64
-
+#ENV CUDA_PATH /usr/local/cuda
+#ENV CUDA_ROOT /usr/local/cuda/bin
+#ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64
 
 RUN ldconfig
 RUN apt-get -qq update
