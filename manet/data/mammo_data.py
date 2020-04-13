@@ -27,7 +27,6 @@ class MammoDataset(Dataset):
         self.cache_dir = pathlib.Path(cache_dir)
 
         self.filter_negatives = True
-
         if isinstance(dataset_description, (str, pathlib.Path)):
             self.logger.info(f'Loading dataset description from file {dataset_description}.')
             dataset_description = read_json(dataset_description)
@@ -44,13 +43,10 @@ class MammoDataset(Dataset):
             self.logger.debug(f'Parsing patient {patient} ({idx + 1}/{len(self.dataset_description)}).')
             for study_id in self.dataset_description[patient]:
                 for image_dict in self.dataset_description[patient][study_id]:
-                    class_label = image_dict['DCIS_grade']
-                    if self.class_mapping:
-                        class_label = self.class_mapping[class_label]
+
 
                     curr_data_dict = {'case_path': patient,
-                                      'image_fn': pathlib.Path(image_dict['filename']),
-                                      'class': class_label}
+                                      'image_fn': pathlib.Path(image_dict['filename'])}
 
                     if self.filter_negatives and 'label' in image_dict:
                         label_fn = pathlib.Path(image_dict['label'])
@@ -59,6 +55,12 @@ class MammoDataset(Dataset):
                         if 'bbox' not in image_dict:
                             self.logger.info(f'Patient {patient} with study {study_id} has no bounding box, skipping.')
                             continue
+
+                        if self.class_mapping:
+                            class_label = self.class_mapping[image_dict['DCIS_grade']]
+                        else:
+                            class_label = image_dict['DCIS_grade']
+                        curr_data_dict['DCIS_grade'] = class_label
                         curr_data_dict['bbox'] = image_dict['bbox']
 
                         self.data.append(curr_data_dict)
@@ -100,7 +102,6 @@ def build_datasets(data_source):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     train_list = read_list(data_source / 'training_set.txt')
     validation_list = read_list(data_source / 'validation_set.txt')
-
     mammography_description = read_json(data_source / 'dataset_description.json')
 
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
