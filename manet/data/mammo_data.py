@@ -33,6 +33,10 @@ class MammoDataset(Dataset):
             dataset_description = read_json(dataset_description)
         self.dataset_description = dataset_description
 
+        self.class_mapping = {1: 0,
+                              2: 0,
+                              3: 1}
+
         self.data = []
 
         # TODO: Have bounding boxes computed elsewhere.
@@ -40,7 +44,14 @@ class MammoDataset(Dataset):
             self.logger.debug(f'Parsing patient {patient} ({idx + 1}/{len(self.dataset_description)}).')
             for study_id in self.dataset_description[patient]:
                 for image_dict in self.dataset_description[patient][study_id]:
-                    curr_data_dict = {'case_path': patient, 'image_fn': pathlib.Path(image_dict['filename'])}
+                    class_label = image_dict['DCIS_stage']
+                    if self.class_mapping:
+                        class_label = self.class_mapping[class_label]
+
+                    curr_data_dict = {'case_path': patient,
+                                      'image_fn': pathlib.Path(image_dict['filename']),
+                                      'class': class_label}
+
                     if self.filter_negatives and 'label' in image_dict:
                         label_fn = pathlib.Path(image_dict['label'])
                         curr_data_dict['label_fn'] = label_fn
