@@ -35,6 +35,8 @@ from manet.sys import multi_gpu
 from manet.utils import ensure_list
 from fexp.plotting import plot_2d
 
+from sklearn.metrics import roc_auc_score, balanced_accuracy_score, f1_score
+
 import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
@@ -158,6 +160,13 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     loss_fn = build_losses(use_classifier)
     dice_fn = HardDice(cls=1, binary_cls=True)
 
+    aggregate_outputs = [False]
+    if use_classifier:
+        aggregate_outputs += [True]
+
+    stored_outputs = []
+    stored_groundtruths = []
+
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
             images = batch['image'].to(args.device)
@@ -169,6 +178,14 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
             output = ensure_list(model(images))
             output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
+
+            stored_outputs.append(
+                [curr_output if aggregate else None for
+                 curr_output, aggregate in zip(output_softmax, aggregate_outputs)])
+
+            stored_groundtruths.append(
+                [curr_gtr if aggregate else None for
+                 curr_gtr, aggregate in zip(ground_truth, aggregate_outputs)])
 
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
@@ -198,6 +215,19 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
     metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
                    'DevDice': torch.tensor(np.mean(dices)).to(args.device)},
+
+    # Compute metrics for stored output:
+    if use_classifier:
+        grab_idx = 1
+        outputs = np.asarray([_[grab_idx] for _ in stored_outputs])
+        gtrs = np.asarray([_[grab_idx] for _ in stored_groundtruths])
+        auc = roc_auc_score(gtrs, outputs)
+        balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
+        f1_score =  f1_score(gtrs, outputs)
+        metric_dict['DevAUC'] = torch.tensor(auc).to(args.device)
+        metric_dict['DevBalancedAcc'] = torch.tensor(balanced_accuracy).to(args.device)
+        metric_dict['DevF1Score'] = torch.tensor(f1_score).to(args.device)
+
 
     if cfg.MULTIGPU == 2:
         torch.cuda.synchronize()
@@ -232,42 +262,6 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
         )
         return training_loader, validation_loader
     return training_loader
-
-#
-# def update_train_sampler(args, epoch, model, cfg, dataset, writer, exp_path, is_distributed):
-#     eval_sampler = build_samplers(dataset, 'sequential', weights=False, is_distributed=is_distributed)
-#     eval_loader = DataLoader(
-#         dataset=dataset,
-#         batch_size=cfg.BATCH_SZ,
-#         sampler=eval_sampler,
-#         num_workers=args.num_workers,
-#         pin_memory=True,
-#     )
-#     dev_loss, dev_dice, dev_time, losses = evaluate(
-#         args, epoch, model, eval_loader, writer, exp_path, return_losses=True)
-#
-#     idx_losses = list(enumerate(losses))
-#     idx_losses = sorted(idx_losses, key=lambda v: -v[1])
-#     new_weights = np.ones(len(dataset))
-#     PERCENTILE = 0.1
-#     SCALE = 2.0
-#
-#     for idx in range(int(len(idx_losses) * PERCENTILE)):
-#         n_idx, _ = idx_losses[idx]
-#         new_weights[n_idx] *= SCALE
-#         new_weights /= len(new_weights)
-#
-#     train_sampler = build_sampler(dataset, 'weighted_random', weights=new_weights, is_distributed=is_distributed)
-#     if cfg.MULTIGPU == 2:
-#         train_sampler.set_epoch(epoch)
-#     train_loader = DataLoader(
-#         dataset=dataset,
-#         batch_size=cfg.BATCH_SZ,
-#         sampler=train_sampler,
-#         num_workers=args.num_workers,
-#         pin_memory=True,
-#     )
-#     return train_loader, train_sampler
 
 
 def main(args):
@@ -347,6 +341,7 @@ def main(args):
     if cfg.MULTIGPU == 2:
         if cfg.APEX >= 0:
             logger.info('Using APEX Distributed Data Parallel')
+            # TODO: Apex unstable, replace with torch DDP
             model = apex.parallel.DistributedDataParallel(model, delay_allreduce=cfg.DELAY_REDUCE)
         else:
             logger.info('Using Torch Distributed Data Parallel')
@@ -362,10 +357,12 @@ def main(args):
             if cfg.MULTIGPU == 2:
                 training_sampler.set_epoch(epoch)
 
-            train_loss, train_time = train_epoch(args, epoch, model, training_loader, optimizer, lr_scheduler, writer)
+            train_loss, train_time = train_epoch(args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
+                                                 use_classifier=cfg.UNET.USE_CLASSIFIER)
 
             dev_loss, dev_dice, dev_time = evaluate(
-                args, epoch, model, validation_loader, writer, exp_path, return_losses=False)
+                args, epoch, model, validation_loader, writer, exp_path, return_losses=False,
+                use_classifier=cfg.UNET.USE_CLASSIFIER)
 
             if args.local_rank == 0:
                 save_model(exp_path, epoch, model, optimizer, lr_scheduler)
