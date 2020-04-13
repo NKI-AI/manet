@@ -266,7 +266,8 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
         curr_dict['PatientID'] = patient_mapping[patient_id]
 
-        output[str(f)].append(curr_dict)
+        if not output[patient_id][uid_mapping[study_instance_uid]]:
+            output[patient_id][uid_mapping[study_instance_uid]].append([curr_dict])
 
     write_list(labels_found, 'labels.log')
 
