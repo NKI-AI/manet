@@ -215,7 +215,7 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
 
 
 def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, create_links=True):
-    output = defaultdict(list)
+    output = defaultdict(dict)
     labels_found = []
 
     for fn in mammograms:
@@ -266,8 +266,10 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
         curr_dict['PatientID'] = patient_mapping[patient_id]
 
-        if not output[patient_id][uid_mapping[study_instance_uid]]:
-            output[patient_id][uid_mapping[study_instance_uid]].append([curr_dict])
+        if not uid_mapping[study_instance_uid] in output[patient_id]:
+            output[patient_id][uid_mapping[study_instance_uid]] = [curr_dict]
+        else:
+            output[patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
 
     write_list(labels_found, 'labels.log')
 
