@@ -264,13 +264,12 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         # Do stuff here to link label.
 
         patient_id = curr_dict['PatientID']
-        if patient_id in dcis_dict:
-            curr_dict['DCIS_grade'] = dcis_dict[patient_id]
 
         curr_dict['Original_PatientID'] = patient_id
         curr_dict['filename'] = str(new_fn.relative_to(new_path))
         if label:
             curr_dict['label'] = str(label.relative_to(new_path))
+            curr_dict['DCIS_grade'] = dcis_dict[patient_id]
             try:
                 curr_dict['bbox'] = compute_bounding_box(label)
             except IndexError:
