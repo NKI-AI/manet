@@ -38,15 +38,14 @@ class MammoDataset(Dataset):
 
         self.data = []
 
-        # TODO: Have bounding boxes computed elsewhere.
         for idx, patient in enumerate(self.dataset_description):
             self.logger.debug(f'Parsing patient {patient} ({idx + 1}/{len(self.dataset_description)}).')
+            curr_data_dict = {'case_path': patient}
             for study_id in self.dataset_description[patient]:
                 for image_dict in self.dataset_description[patient][study_id]:
 
 
-                    curr_data_dict = {'case_path': patient,
-                                      'image_fn': pathlib.Path(image_dict['filename'])}
+                    curr_data_dict['image_fn'] = pathlib.Path(image_dict['filename'])
 
                     if self.filter_negatives and 'label' in image_dict:
                         label_fn = pathlib.Path(image_dict['label'])
@@ -55,11 +54,15 @@ class MammoDataset(Dataset):
                         if 'bbox' not in image_dict:
                             self.logger.info(f'Patient {patient} with study {study_id} has no bounding box, skipping.')
                             continue
+                        if 'DCIS_grade' not in image_dict:
+                            self.logger.warning(f'Patient {patient} with study {study_id} has no DCIS grade but has a label.')
+                            continue
 
                         if self.class_mapping:
                             class_label = self.class_mapping[image_dict['DCIS_grade']]
                         else:
                             class_label = image_dict['DCIS_grade']
+
                         curr_data_dict['DCIS_grade'] = class_label
                         curr_data_dict['bbox'] = image_dict['bbox']
 
