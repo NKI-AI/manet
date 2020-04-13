@@ -7,13 +7,13 @@ LICENSE file in the root directory of this source tree.
 import torch
 
 
-def build_losses(use_classifier=False, multipliers=[1.0, 0.5], top_k=[0.05, None]):
+def build_losses(use_classifier=False, multipliers=(1.0, 0.5), top_k=(None, None)):
     reduction = ['mean' if _top_k is None else False for _top_k in top_k]
 
-    loss_fns = [multipliers[0]*torch.nn.CrossEntropyLoss(weight=None, reduction=reduction[0])]
+    loss_fns = [lambda x: multipliers[0] * torch.nn.CrossEntropyLoss(weight=None, reduction=reduction[0])(x)]
 
     if use_classifier:
-        loss_fns += multipliers[1]*torch.nn.CrossEntropyLoss(weight=None, reduction=reduction[1])
+        loss_fns += lambda x: multipliers[1]*torch.nn.CrossEntropyLoss(weight=None, reduction=reduction[1])(x)
 
     # if args.topk > 0.0 or args.randomk > 0.0:
     #     tensor_size = list(train_loss.size())
