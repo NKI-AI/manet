@@ -104,9 +104,9 @@ class MammoDataset(Dataset):
         label_fn = self.data_root / pathlib.Path(data_dict['label_fn'])
         stage = data_dict['class']
         if stage == 3:
-            b_stage = 1
+            b_stage = np.array([1])
         else:
-            b_stage = 0
+            b_stage = np.array([0])
 
         mammogram = read_mammogram(image_fn)
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
