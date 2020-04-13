@@ -289,7 +289,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
 def compute_bounding_box(label_fn):
     # TODO: Better building of cache names.
-    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)
+    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)[0]  # TODO fix force_2d
     bbox = bounding_box(label_arr)
 
     # Classes cannot be collated in the standard pytorch collate function.
