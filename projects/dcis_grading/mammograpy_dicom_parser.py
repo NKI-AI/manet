@@ -220,7 +220,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
     dcis_dict = {}
     if dcis_labels:
-        dcis_dict = {k.strip(): int(v.strip()) for k, v in dcis_labels.read_text.split('\n').split(' ')}
+        dcis_dict = {x.split('\t')[0].strip(): int(x.split('\t')[1].strip()) for x in dcis_labels.read_text().split('\n') if x}
 
     for fn in mammograms:
         patient_id = mammograms[fn]['PatientID']
@@ -265,7 +265,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         patient_id = curr_dict['PatientID']
         if patient_id in dcis_dict:
             curr_dict['DCIS_stage'] = dcis_dict[patient_id]
-        
+
         curr_dict['Original_PatientID'] = patient_id
         curr_dict['filename'] = str(new_fn)
         if label:
@@ -274,7 +274,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         new_patient_id = patient_mapping[patient_id]
 
         if not uid_mapping[study_instance_uid] in output[new_patient_id]:
-            output[patient_mapping[new_patient_id]][uid_mapping[study_instance_uid]] = [curr_dict]
+            output[new_patient_id][uid_mapping[study_instance_uid]] = [curr_dict]
         else:
             output[new_patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
 
