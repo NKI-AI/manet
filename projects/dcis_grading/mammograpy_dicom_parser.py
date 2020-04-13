@@ -247,8 +247,8 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
             except FileExistsError as e:
                 logger.info(f'Label {label_path} exists.')
-            label = str(f / Path(label_path.name))
-            labels_found.append(label)
+            label = f / Path(label_path.name)
+            labels_found.append(str(label))
 
         try:
             if create_links:
@@ -264,13 +264,12 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         # Do stuff here to link label.
 
         patient_id = curr_dict['PatientID']
-        if patient_id in dcis_dict:
-            curr_dict['DCIS_stage'] = dcis_dict[patient_id]
 
         curr_dict['Original_PatientID'] = patient_id
-        curr_dict['filename'] = str(new_fn)
+        curr_dict['filename'] = str(new_fn.relative_to(new_path))
         if label:
-            curr_dict['label'] = label
+            curr_dict['label'] = str(label.relative_to(new_path))
+            curr_dict['DCIS_grade'] = dcis_dict[patient_id]
             try:
                 curr_dict['bbox'] = compute_bounding_box(label)
             except IndexError:
@@ -286,7 +285,6 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
     write_list(labels_found, 'labels.log')
 
     return dict(output)
-
 
 
 def compute_bounding_box(label_fn):
