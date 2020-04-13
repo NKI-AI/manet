@@ -55,7 +55,7 @@ class MammoDataset(Dataset):
                             self.logger.info(f'Patient {patient} with study {study_id} has no bounding box, skipping.')
                             continue
                         if 'DCIS_grade' not in image_dict:
-                            self.logger.warning(f'Patient {patient} with study {study_id} has no bounding box but has a label.')
+                            self.logger.warning(f'Patient {patient} with study {study_id} has no DCIS grade but has a label.')
                             continue
 
                         if self.class_mapping:
