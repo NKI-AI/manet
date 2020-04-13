@@ -19,7 +19,8 @@ from pydicom.errors import InvalidDicomError
 from pathlib import Path
 
 from fexp.utils.io import write_json
-
+from fexp.readers import read_image
+from fexp.utils.bbox import bounding_box
 
 logger = logging.getLogger('mammo_importer')
 logging.getLogger().setLevel(logging.INFO)
@@ -270,6 +271,10 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         curr_dict['filename'] = str(new_fn)
         if label:
             curr_dict['label'] = label
+            try:
+                curr_dict['bbox'] = compute_bounding_box(label)
+            except IndexError:
+                tqdm.write(f"Fail bbox compute: {curr_dict['label']}")
 
         new_patient_id = patient_mapping[patient_id]
 
@@ -281,6 +286,17 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
     write_list(labels_found, 'labels.log')
 
     return dict(output)
+
+
+
+def compute_bounding_box(label_fn):
+    # TODO: Better building of cache names.
+    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)
+    bbox = bounding_box(label_arr)
+
+    # Classes cannot be collated in the standard pytorch collate function.
+    return [int(_) for _ in list(bbox)]
+
 
 
 def main():
