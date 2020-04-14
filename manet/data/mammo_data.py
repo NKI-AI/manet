@@ -40,11 +40,10 @@ class MammoDataset(Dataset):
 
         for idx, patient in enumerate(self.dataset_description):
             self.logger.debug(f'Parsing patient {patient} ({idx + 1}/{len(self.dataset_description)}).')
-            curr_data_dict = {'case_path': patient}
             for study_id in self.dataset_description[patient]:
                 for image_dict in self.dataset_description[patient][study_id]:
+                    curr_data_dict = {'case_path': patient}
                     curr_data_dict['image_fn'] = pathlib.Path(image_dict['filename'])
-
                     if self.filter_negatives and 'label' in image_dict:
                         label_fn = pathlib.Path(image_dict['label'])
                         curr_data_dict['label_fn'] = label_fn

@@ -149,7 +149,7 @@ class RandomLUT:
                         dicom_cw_idx = np.random.choice(num_center_widths)
                     except ValueError:
                         print(image_fn, num_center_widths, num_dicom_luts, voi_lut_function)
-                        raise ValueError('boe')
+                        raise ValueError(f'boe {image_fn}, {num_center_widths}, {num_dicom_luts}, {voi_lut_function}')
                 dicom_window = [mammogram.dicom_window_center[dicom_cw_idx], mammogram.dicom_window_width[dicom_cw_idx]]
                 dicom_window += np.random.uniform(size=2) * self.window_jitter_percentage
             else:
