@@ -81,7 +81,7 @@ class MammoDataset(Dataset):
         label_fn = self.data_root / data_dict['label_fn']
 
         mammogram = read_mammogram(image_fn)
-        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)[0] # TODO: fix in fexp!  # int64 gets cast to LongTensor
+        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64) # TODO: fix in fexp!  # int64 gets cast to LongTensor
 
         sample = {
             'mammogram': mammogram,
