@@ -269,7 +269,9 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
             logger.info(f'Symlinking for {fn} already exists.')
 
         if new_fn in fns_added:
-            sys.exit(f'{new_fn} already in list')
+            continue
+            # sys.exit(f'{new_fn} already in list')
+
         fns_added.append(new_fn)
 
         curr_dict = {}  # mammograms[str(fn)].copy()
@@ -289,10 +291,10 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
         new_patient_id = patient_mapping[patient_id]
 
-        if not uid_mapping[study_instance_uid] in output[new_patient_id]:
-            output[new_patient_id][uid_mapping[study_instance_uid]] = [curr_dict]
-        else:
-            output[new_patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
+        study_id = uid_mapping[study_instance_uid]
+        if study_id not in output[new_patient_id]:
+            output[new_patient_id][study_id] = []
+        output[new_patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
 
     write_list(labels_found, 'labels.log')
 
