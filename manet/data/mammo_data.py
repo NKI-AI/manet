@@ -75,7 +75,7 @@ class MammoDataset(Dataset):
                         else:
                             class_label = image_dict['DCIS_stage']
 
-                        curr_data_dict['DCIS_stage'] = class_label
+                        curr_data_dict['class'] = class_label
                         curr_data_dict['bbox'] = image_dict['bbox']
 
                         self.data.append(curr_data_dict)
@@ -133,9 +133,10 @@ class MammoDataset(Dataset):
             'mask': mask,
             'bbox': data_dict['bbox'],
             'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
-            'label_fn': str(label_fn),
-            'class': data_dict['DCIS_stage']
+            'label_fn': str(label_fn)
         }
+        if 'class' in data_dict:
+            sample['class'] = np.asarray([data_dict['class']]).astype(np.int64)
 
         if self.transform:
             sample = self.transform(sample)
