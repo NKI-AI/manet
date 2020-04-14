@@ -205,7 +205,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
 
-            batch_dice = dice_fn(output_softmax[:, 1, ...], masks)
+            batch_dice = dice_fn(output_softmax[0][:, 1, ...], masks)
             dices.append(batch_dice.item())
             del output
 
@@ -229,12 +229,11 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     if cfg.MULTIGPU == 2:
         torch.cuda.synchronize()
         reduce_tensor_dict(metric_dict)
-    # if args.local_rank == 0:
-    #    for key in metric_dict:
-    #        writer.add_scalar(key, metric_dict[key].item(), epoch)
-    #
+    if args.local_rank == 0:
+        for key in metric_dict:
+            writer.add_scalar(key, metric_dict[key].item(), epoch)
+
     torch.cuda.empty_cache()
-    return None, None, None
     if return_losses:
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start, losses
     else:
