@@ -12,7 +12,7 @@ from bisect import bisect_right
 import numpy as np
 import torch
 import logging
-from apex.optimizers import FusedAdam
+# from apex.optimizers import FusedAdam
 
 
 class LRScheduler(torch.optim.lr_scheduler._LRScheduler):
@@ -173,7 +173,7 @@ class WarmRestartLR(LRScheduler):
 
 
 def build_optim(params, cfg):
-    _optim = {'Adam': torch.optim.Adam, 'FusedAdam': FusedAdam,
+    _optim = {'Adam': torch.optim.Adam, 'FusedAdam': None,
               'RMSprop': torch.optim.RMSprop, 'SGD': torch.optim.SGD}[cfg.OPTIMIZER]
     optimizer = _optim(params, cfg.STARTER_LR, weight_decay=cfg.WEIGHT_DECAY)
     return optimizer

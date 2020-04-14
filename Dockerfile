@@ -1,9 +1,8 @@
-FROM ubuntu:18.04
-# nvidia/cuda:10.1-cudnn7-devel
+FROM nvidia/cuda:10.1-cudnn7-devel
 
-#ENV CUDA_PATH /usr/local/cuda
-#ENV CUDA_ROOT /usr/local/cuda/bin
-#ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64
+ENV CUDA_PATH /usr/local/cuda
+ENV CUDA_ROOT /usr/local/cuda/bin
+ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64
 
 RUN ldconfig
 RUN apt-get -qq update
@@ -39,13 +38,13 @@ RUN pip install tb-nightly yacs -q
 RUN pip install --upgrade pip
 RUN pip install pydicom -q
 RUN pip install future packaging pytest coverage coveralls easydict tifffile demandimport simpleitk scikit-learn -q
-RUN pip install git+https://github.com/AIIMLab/fexp
+RUN pip install git+https://github.com/AIIMLab/fexp@devel
 
 
 WORKDIR /tmp
 RUN git clone https://github.com/NVIDIA/apex
 WORKDIR apex
-RUN pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" .
+RUN pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" . | exit 0
 
 # Create directories for input and output
 RUN mkdir /manet && chmod 777 /manet
