@@ -4,10 +4,13 @@ Copyright (c) Nikita Moriakov and Jonas Teuwen
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+import torch
 import numpy as np
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
 from fexp.transforms import Compose, RandomTransform
 
+import warnings
+warnings.filterwarnings("ignore")
 
 class CropAroundBbox:
     def __init__(self, output_size=None):
@@ -18,8 +21,7 @@ class CropAroundBbox:
 
         effective_output_size = self.output_size[-bbox.ndim:]
         new_bbox = bbox.bounding_box_around_center(effective_output_size).astype(int)
-
-        sample['mammogram'] = crop_to_bbox(sample['mammogram'], new_bbox.squeeze(0))
+        sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
         sample['mask'] = crop_to_bbox(sample['mask'], new_bbox)
 
         del sample['bbox']
@@ -31,8 +33,7 @@ class RandomShiftBbox:
         self.max_shift = np.asarray(max_shift)
 
     def __call__(self, sample):
-        # TODO: fexp, if is already BoundingBox, casting is not needed.
-        bbox = BoundingBox(sample['bbox'])
+        bbox = BoundingBox(sample['bbox'])  # TODO: This should already be a bbox
         shift = np.random.randint(-self.max_shift, self.max_shift)
         new_bbox = (bbox + shift).astype(np.int)
 
@@ -54,7 +55,7 @@ class RandomFlipTransform:
         if 'bbox' in sample:
             raise NotImplementedError
 
-        sample['mammogram'] = np.flip(sample['mammogram'], axis=self.axis).copy()  # Fix once torch supports negative strides.
+        sample['image'] = np.flip(sample['image'], axis=self.axis).copy()  # Fix once torch supports negative strides.
         if 'mask' in sample:
             sample['mask'] = np.flip(sample['mask'], axis=self.axis).copy()  # Fix once torch supports negative strides.
 
@@ -78,7 +79,7 @@ class RandomGammaTransform:
 
     def __call__(self, sample):
         gamma = np.random.uniform(*self.gamma_range)
-        sample['mammogram'] = np.power(sample['mammogram'], gamma)
+        sample['image'] = np.power(sample['image'], gamma)
         return sample
 
 
@@ -88,14 +89,30 @@ class RandomGaussianNoise:
         self.as_percentage = as_percentage
 
     def __call__(self, sample):
-        image = sample['mammogram']
+        image = sample['image']
         if self.as_percentage:
             std_dev = (image.max() - image.min()) * self.std_dev
         else:
             std_dev = self.std_dev
 
-        sample['mammogram'] = image + np.random.normal(scale=std_dev, size=image.shape)
+        sample['image'] = image + np.random.normal(scale=std_dev, size=image.shape)
         return sample
+
+
+class ToTensor:
+    def __init__(self):
+        pass
+
+    def __call__(self, sample):
+        sample['image'] = torch.from_numpy(sample['image']).float()
+        if 'mask' in sample:
+            sample['mask'] = torch.from_numpy(sample['mask']).long()
+        if 'class' in sample:
+            sample['class'] = torch.as_tensor(sample['class']).long()
+
+        return sample
+
+
 
 
 class RandomLUT:
@@ -110,8 +127,8 @@ class RandomLUT:
         self.window_jitter_percentage = window_jitter_percentage
 
     def __call__(self, sample):
-        mammogram = sample['mammogram']
-        del sample['mammogram']
+        mammogram = sample['image']
+        del sample['image']
         num_dicom_luts = mammogram.num_dicom_luts
         num_center_widths = mammogram.num_dicom_center_widths
         voi_lut_function = mammogram.voi_lut_function
@@ -135,7 +152,7 @@ class RandomLUT:
                 dicom_window = [mammogram.dicom_window_center[0], mammogram.dicom_window_width[0]]
             mammogram.set_center_width(*dicom_window)
 
-        sample['mammogram'] = mammogram.image[np.newaxis, ...].astype(np.float32)
+        sample['image'] = mammogram.image[np.newaxis, ...].astype(np.float32)
         return sample
 
 
@@ -148,12 +165,16 @@ def build_transforms():
         RandomTransform([
             RandomGammaTransform((0.9, 1.1)),
             RandomGaussianNoise(0.05, as_percentage=True)]),
-    ])
+        ToTensor(),
+        ]
+    )
+
 
     validation_transforms = Compose([
         RandomLUT(),
         # ClipAndScale(None, None, [0, 1]),
-        CropAroundBbox((1, 1024, 1024))
+        CropAroundBbox((1, 1024, 1024)),
+        ToTensor(),
     ])
 
     return training_transforms, validation_transforms

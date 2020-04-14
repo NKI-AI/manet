@@ -129,14 +129,14 @@ class MammoDataset(Dataset):
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
 
         sample = {
-            'mammogram': mammogram,
+            'image': mammogram,
             'mask': mask,
             'bbox': data_dict['bbox'],
             'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
             'label_fn': str(label_fn)
         }
         if 'class' in data_dict:
-            sample['class'] = np.asarray([data_dict['class']]).astype(np.int64)
+            sample['class'] = data_dict['class']
 
         if self.transform:
             sample = self.transform(sample)
@@ -151,7 +151,6 @@ def build_datasets(data_source):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     train_list = read_list(data_source / 'training_set.txt')
     validation_list = read_list(data_source / 'validation_set.txt')
-
     mammography_description = read_json(data_source / 'dataset_description.json')
 
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
