@@ -235,6 +235,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     #        writer.add_scalar(key, metric_dict[key].item(), epoch)
     #
     torch.cuda.empty_cache()
+    return None, None, None
     if return_losses:
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start, losses
     else:
