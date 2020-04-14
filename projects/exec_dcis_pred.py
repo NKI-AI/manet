@@ -171,7 +171,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
             ground_truth = [masks]
             if use_classifier:
-                ground_truth += batch['class'].to(args.device)
+                ground_truth.append(batch['class'].to(args.device))
 
             output = ensure_list(model(images))
             output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
@@ -214,7 +214,8 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                    'DevDice': torch.tensor(np.mean(dices)).to(args.device)},
 
     # Compute metrics for stored output:
-    if use_classifier:
+    if False:
+        print(len(stored_outputs), stored_outputs)
         grab_idx = 1
         outputs = np.asarray([_[grab_idx].cpu().numpy() for _ in stored_outputs])
         gtrs = np.asarray([_[grab_idx].cpu().numpy() for _ in stored_groundtruths])
