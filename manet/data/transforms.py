@@ -104,9 +104,9 @@ class ToTensor:
     def __call__(self, sample):
         sample['image'] = torch.from_numpy(sample['image']).float()
         if 'mask' in sample:
-            sample['mask'] = torch.from_numpy(sample['mask'].astype(np.uint8))
+            sample['mask'] = torch.from_numpy(sample['mask']).long()
         if 'class' in sample:
-            sample['class'] = torch.tensor(sample['mask']).type(torch.uint8)
+            sample['class'] = torch.tensor(sample['class'], requires_grad=False).long()
 
         return sample
 
@@ -158,7 +158,7 @@ def build_transforms():
     training_transforms = Compose([
         RandomLUT(),
         RandomShiftBbox([100, 100]),
-        CropAroundBbox((1, 512, 512)),
+        CropAroundBbox((1, 1024, 1024)),
         RandomFlipTransform(0.5),
         RandomTransform([
             RandomGammaTransform((0.9, 1.1)),

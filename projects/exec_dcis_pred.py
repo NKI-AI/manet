@@ -88,11 +88,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
         output = ensure_list(model(images))
-        print(output[0].device, ground_truth[0].device, loss_fn[0](output[0], ground_truth[0]).device)
-        if use_classifier:
-            print(output[0].shape, ground_truth[0].shape, output[1].shape, ground_truth[1].shape)
         losses = [loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
-        print(losses, sum(losses).shape)
         train_loss = sum(losses)
 
         # Backprop the loss, use APEX if necessary
