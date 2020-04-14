@@ -269,7 +269,8 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
             logger.info(f'Symlinking for {fn} already exists.')
 
         if new_fn in fns_added:
-            sys.exit(f'{new_fn} already in list')
+            continue
+            # sys.exit(f'{new_fn} already in list')
 
         fns_added.append(new_fn)
 
