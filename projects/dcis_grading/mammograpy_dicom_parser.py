@@ -230,6 +230,8 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
     if dcis_labels:
         dcis_dict = {x.split('\t')[0].strip(): int(x.split('\t')[1].strip()) for x in dcis_labels.read_text().split('\n') if x}
 
+    fns_added = []
+
     for fn in mammograms:
         patient_id = mammograms[fn]['PatientID']
         study_instance_uid = mammograms[fn]['StudyInstanceUID']
@@ -266,7 +268,11 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')
 
-        curr_dict = {} # mammograms[str(fn)].copy()
+        if new_fn in fns_added:
+            sys.exit(f'{new_fn} already in list')
+        fns_added.append(new_fn)
+
+        curr_dict = {}  # mammograms[str(fn)].copy()
 
         patient_id = mammograms[str(fn)]['PatientID']
 
