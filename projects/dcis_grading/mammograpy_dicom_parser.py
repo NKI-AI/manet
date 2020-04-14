@@ -117,9 +117,9 @@ def find_mammograms(dicoms):
                     'PatientID': x.PatientID,
                     'StudyInstanceUID': x.StudyInstanceUID,
                     'SeriesInstanceUID': x.SeriesInstanceUID,
-                    'SeriesDescription': x.SeriesDescription,
-                    'InstitutionName': x.InstitutionName,
-                    'Manufacturer': x.Manufacturer,
+                    'SeriesDescription': getattr(x, 'SeriesDescription', ''),
+                    'InstitutionName': getattr(x, 'InstitutionName', ''),
+                    'Manufacturer': getattr(x, 'Manufacturer', ''),
                     'ViewPosition': view if view else 'NA',
                     'Laterality': laterality if laterality else 'NA',
                     'ImageType': list(x.ImageType)
