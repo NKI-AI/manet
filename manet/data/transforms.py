@@ -9,6 +9,8 @@ import numpy as np
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
 from fexp.transforms import Compose, RandomTransform
 
+import warnings
+warnings.filterwarnings("ignore")
 
 class CropAroundBbox:
     def __init__(self, output_size=None):
@@ -106,7 +108,7 @@ class ToTensor:
         if 'mask' in sample:
             sample['mask'] = torch.from_numpy(sample['mask']).long()
         if 'class' in sample:
-            sample['class'] = torch.tensor(sample['class'], requires_grad=False).long()
+            sample['class'] = torch.as_tensor(sample['class']).long()
 
         return sample
 
