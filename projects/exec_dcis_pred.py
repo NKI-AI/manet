@@ -160,7 +160,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     aggregate_outputs = [False]
     if use_classifier:
         aggregate_outputs.append(True)
-
+    sys.exit()
     stored_outputs = []
     stored_groundtruths = []
 
@@ -174,12 +174,12 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 ground_truth.append(batch['class'].to(args.device))
 
             output = ensure_list(model(images))
-            output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
+            output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))]
 
             stored_outputs.append(
                 [curr_output if aggregate else None for
                  curr_output, aggregate in zip(output_softmax, aggregate_outputs)])
-
+            print(stored_outputs)
             stored_groundtruths.append(
                 [curr_gtr if aggregate else None for
                  curr_gtr, aggregate in zip(ground_truth, aggregate_outputs)])
@@ -217,6 +217,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     if use_classifier:
         grab_idx = 1
         outputs = torch.stack([_[grab_idx] for _ in stored_outputs]).cpu().numpy()[:, 1]
+
         gtrs = torch.stack([_[grab_idx] for _ in stored_groundtruths]).cpu().numpy()[:, 1]
         auc = roc_auc_score(gtrs, outputs)
         balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
