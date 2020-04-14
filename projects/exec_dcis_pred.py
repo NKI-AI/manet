@@ -148,7 +148,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
 
 def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
-    logger.info(f'Evaluation for epoch {epoch}')
+    logger.info(f'Evaluation for epoch {epoch + 1}')
     model.eval()
 
     losses = []
@@ -160,7 +160,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     aggregate_outputs = [False]
     if use_classifier:
         aggregate_outputs.append(True)
-    sys.exit()
+
     stored_outputs = []
     stored_groundtruths = []
 
