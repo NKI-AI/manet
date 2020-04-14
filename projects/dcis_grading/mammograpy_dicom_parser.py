@@ -308,11 +308,17 @@ def main():
     dicoms = find_dicoms(args.path)
     mammograms, patient_ids, failed_to_parse = find_mammograms(dicoms)
 
+    write_json(args.dest / 'mammograms.json', mammograms)
+
     with open('failed_to_parse.log', 'a') as f:
         for line in failed_to_parse:
             f.write(line + '\n')
 
     patient_mapping = make_patient_mapping(patient_ids)
+    write_json(args.dest / 'patient_mapping.json', patient_mapping)
+
+    import sys
+    sys.exit()
 
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
     logging.info('Writing new directory structure. This can take a while.')
