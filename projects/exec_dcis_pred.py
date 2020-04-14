@@ -179,7 +179,6 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             stored_outputs.append(
                 [curr_output if aggregate else None for
                  curr_output, aggregate in zip(output_softmax, aggregate_outputs)])
-            print(stored_outputs)
             stored_groundtruths.append(
                 [curr_gtr if aggregate else None for
                  curr_gtr, aggregate in zip(ground_truth, aggregate_outputs)])
@@ -187,7 +186,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
                 image_arr = images.detach().cpu().numpy()[0, 0, ...]
-                output_arr = output_softmax.detach().cpu().numpy()[0, 1, ...]
+                output_arr = output_softmax[0].detach().cpu().numpy()[0, 1, ...]
                 masks_arr = masks.detach().cpu()[0, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
