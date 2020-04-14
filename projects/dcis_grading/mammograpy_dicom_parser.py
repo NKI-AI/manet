@@ -268,8 +268,6 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
         curr_dict = mammograms[str(fn)].copy()
 
-        # Do stuff here to link label.
-
         patient_id = curr_dict['PatientID']
 
         curr_dict['Original_PatientID'] = patient_id
@@ -327,9 +325,6 @@ def main():
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
 
     write_json(args.dest / 'uid_mapping.json', uid_mapping)
-
-    import sys
-    sys.exit()
 
     logging.info('Writing new directory structure. This can take a while.')
     new_mammograms = create_temporary_file_structure(
