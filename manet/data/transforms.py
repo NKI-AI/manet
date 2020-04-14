@@ -127,6 +127,7 @@ class RandomLUT:
 
     def __call__(self, sample):
         mammogram = sample['mammogram']
+        image_fn = mammogram.data_origin
         del sample['mammogram']
         num_dicom_luts = mammogram.num_dicom_luts
         num_center_widths = mammogram.num_dicom_center_widths
@@ -144,7 +145,11 @@ class RandomLUT:
                 if voi_lut_function == 'SIGMOID':
                     dicom_cw_idx = 0
                 else:
-                    dicom_cw_idx = np.random.choice(num_center_widths)
+                    try:
+                        dicom_cw_idx = np.random.choice(num_center_widths)
+                    except ValueError:
+                        print(image_fn, num_center_widths, num_dicom_luts, voi_lut_function)
+                        raise ValueError('boe')
                 dicom_window = [mammogram.dicom_window_center[dicom_cw_idx], mammogram.dicom_window_width[dicom_cw_idx]]
                 dicom_window += np.random.uniform(size=2) * self.window_jitter_percentage
             else:
