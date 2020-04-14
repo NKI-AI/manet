@@ -215,6 +215,9 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     # Compute metrics for stored output:
     if use_classifier:
         grab_idx = 1
+
+        print(torch.stack([_[grab_idx] for _ in stored_outputs]).shape)
+
         outputs = torch.stack([_[grab_idx] for _ in stored_outputs]).cpu().numpy()[:, 1]
 
         gtrs = torch.stack([_[grab_idx] for _ in stored_groundtruths]).cpu().numpy()[:, 1]
