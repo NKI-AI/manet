@@ -38,7 +38,7 @@ RUN pip install tb-nightly yacs -q
 RUN pip install --upgrade pip
 RUN pip install pydicom -q
 RUN pip install future packaging pytest coverage coveralls easydict tifffile demandimport simpleitk scikit-learn -q
-RUN pip install git+https://github.com/AIIMLab/fexp
+RUN pip install git+https://github.com/AIIMLab/fexp@devel
 
 
 WORKDIR /tmp

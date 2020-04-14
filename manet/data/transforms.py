@@ -18,7 +18,6 @@ class CropAroundBbox:
 
     def __call__(self, sample):
         bbox = BoundingBox(sample['bbox'])
-
         effective_output_size = self.output_size[-bbox.ndim:]
         new_bbox = bbox.bounding_box_around_center(effective_output_size).astype(int)
         sample['image'] = crop_to_bbox(sample['image'], new_bbox.squeeze(0))
