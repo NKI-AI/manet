@@ -176,8 +176,7 @@ class MammogramImage(Image):
                 if self.num_dicom_center_widths == 0 and self.header['dicom_tags'][DICOM_MANUFACTURER] == 'Agfa-Gevaert':
                     self.dicom_window_center = [image_max / 2]
                     self.dicom_window_width = [image_max]
-                else:
-                    raise NotImplementedError
+
             else:
                 raise NotImplementedError(f"{self.data_origin}: {self.header['dicom_tags'][DICOM_MANUFACTURER]}")
 
