@@ -12,13 +12,13 @@ import numpy as np
 import logging
 import time
 import torch
-import apex
+#import apex
 import pathlib
 import random
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-from apex import amp
+#from apex import amp
 
 from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
@@ -181,10 +181,10 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
             ground_truth = [masks]
             if use_classifier:
-                ground_truth += batch['class'].to(args.device)
+                ground_truth += [batch['class'].to(args.device)]
 
             output = ensure_list(model(images))
-            output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
+            output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))]
 
             stored_outputs.append(
                 [curr_output if aggregate else None for
@@ -197,7 +197,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
                 image_arr = images.detach().cpu().numpy()[0, 0, ...]
-                output_arr = output_softmax.detach().cpu().numpy()[0, 1, ...]
+                output_arr = output_softmax[0].detach().cpu().numpy()[0, 1, ...]
                 masks_arr = masks.detach().cpu()[0, ...]
 
                 plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
@@ -217,19 +217,22 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
-            losses.append(batch_losses.sum().item())
 
-            batch_dice = dice_fn(output_softmax[:, 1, ...], masks)
+            #losses.append(batch_losses.sum().item())
+            losses.append(sum(batch_losses))
+
+            batch_dice = dice_fn((output_softmax[0])[:, 1, ...], masks)
             dices.append(batch_dice.item())
             del output
 
     metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
                    'DevDice': torch.tensor(np.mean(dices)).to(args.device)}
-
+    import pdb
+    pdb.set_trace()
     # Compute metrics for stored output:
     if use_classifier:
         grab_idx = 1
-        outputs = np.asarray([_[grab_idx] for _ in stored_outputs])
+        outputs = np.asarray([_[grab_idx].detach().cpu().numpy() for _ in stored_outputs])
         gtrs = np.asarray([_[grab_idx] for _ in stored_groundtruths])
         auc = roc_auc_score(gtrs, outputs)
         balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
