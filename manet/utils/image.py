@@ -179,7 +179,7 @@ class MammogramImage(Image):
                 else:
                     raise NotImplementedError
             else:
-                raise NotImplementedError
+                raise NotImplementedError(self.header['dicom_tags'][DICOM_MANUFACTURER])
 
         if self._current_set_lut is not None and any([_ is not None for _ in self._current_set_center_width]):
             warnings.warn(f'Both LUT and center width are set, only LUT will be applied. '
