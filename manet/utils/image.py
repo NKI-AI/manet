@@ -76,6 +76,12 @@ class MammogramImage(Image):
         if window_center and window_width:
             self.dicom_window_center = [float(_) for _ in window_center.split('\\')]
             self.dicom_window_width = [float(_) for _ in window_width.split('\\')]
+
+            if self.voi_lut_function == 'SIGMOID' and\
+                    (len(self.dicom_window_center) == 0 or len(self.dicom_window_width) == 0):
+                raise ValueError(f'{self.data_origin}: '
+                                 f'SIGMOID as VOILutFunction requires a window center and width value.')
+
             if not len(self.dicom_window_width) == len(self.dicom_window_center):
                 raise ValueError(f'Number of widths and center mismatch.')
             self.num_dicom_center_widths = len(self.dicom_window_width)
