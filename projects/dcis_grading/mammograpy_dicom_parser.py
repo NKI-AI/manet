@@ -19,14 +19,18 @@ from pydicom.errors import InvalidDicomError
 from pathlib import Path
 
 from fexp.utils.io import write_json
+from fexp.readers import read_image
+from fexp.utils.bbox import bounding_box
 
 logger = logging.getLogger('mammo_importer')
 logging.getLogger().setLevel(logging.INFO)
+
 
 def write_list(x, path):
     with open(path, 'w') as f:
         for line in x:
             f.write(line + '\n')
+
 
 def find_dicoms(path):
     logger.info(f'Looking for all dicom files in {path}. This can take a while...')
@@ -42,6 +46,7 @@ def find_dicoms(path):
                 logger.warning(f'{d} does not contain dicom files, but {len(files)} other files.')
     logger.info(f'Found {len(dicoms)} dicom files.')
     return dicoms
+
 
 def find_laterality(dcm_obj):
     for laterality_key in [(0x20, 0x62), (0x20, 0x60)]:
@@ -70,6 +75,7 @@ def find_laterality(dcm_obj):
         view = view[1:]
 
     return laterality, view
+
 
 def find_mammograms(dicoms):
     failed_to_parse = []
@@ -133,10 +139,11 @@ def find_mammograms(dicoms):
             failed_to_parse.append(dicom_file)
 
     logger.info(f'Found {len(mammograms)} and failed to parse {len(failed_to_parse)} files.')
-    #write_list(too_small, 'too_small.log')
-    #rite_list(bad_manufacturer, 'bad_manufacturer.log')
+    write_list(too_small, 'too_small.log')
+    write_list(bad_manufacturer, 'bad_manufacturer.log')
 
     return mammograms, patient_ids, failed_to_parse
+
 
 def make_patient_mapping(patient_ids, encoding='10'):
     patient_ids = set(patient_ids)  # Remove duplicates
@@ -208,16 +215,13 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
     return uid_mapping
 
 
-def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, old_path, new_path, create_links=True):
-    output = defaultdict(list)
+def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, dcis_labels=None, create_links=True):
+    output = defaultdict(dict)
     labels_found = []
 
-    #load txt with dcis stage labels as dictionary
-    dcis_stage = {}
-    with open(old_path / 'labels.txt') as f:
-        for line in f:
-            (key, val) = line.split()
-            dcis_stage[key] = int(val)
+    dcis_dict = {}
+    if dcis_labels:
+        dcis_dict = {x.split('\t')[0].strip(): int(x.split('\t')[1].strip()) for x in dcis_labels.read_text().split('\n') if x}
 
     for fn in mammograms:
         patient_id = mammograms[fn]['PatientID']
@@ -243,8 +247,9 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ol
 
             except FileExistsError as e:
                 logger.info(f'Label {label_path} exists.')
-            label = str(f / Path(label_path.name))
-            labels_found.append(label)
+            label = f / Path(label_path.name)
+            labels_found.append(str(label))
+
         try:
             if create_links:
                 os.symlink(fn, new_fn)
@@ -255,33 +260,51 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ol
             logger.info(f'Symlinking for {fn} already exists.')
 
         curr_dict = mammograms[str(fn)].copy()
+
         # Do stuff here to link label.
 
         patient_id = curr_dict['PatientID']
+
         curr_dict['Original_PatientID'] = patient_id
-        curr_dict['filename'] = str(folder_name / fn.name) #was new_fn
+        curr_dict['filename'] = str(new_fn.relative_to(new_path))
         if label:
-            curr_dict['label'] = str(folder_name / label_path.name) #was label
-        curr_dict['uid_folder'] = uid_mapping[study_instance_uid]
-        curr_dict['PatientID'] = patient_mapping[patient_id]
+            curr_dict['label'] = str(label.relative_to(new_path))
+            curr_dict['DCIS_stage'] = dcis_dict[patient_id]
+            try:
+                curr_dict['bbox'] = compute_bounding_box(label)
+            except IndexError:
+                tqdm.write(f"Fail bbox compute: {curr_dict['label']}")
 
-        try:
-            curr_dict['DCIS_stage'] = dcis_stage[patient_id]
-        except KeyError:
-            print('Patient {} does not seem to exist, please check'.format(patient_id))
-            continue
+        new_patient_id = patient_mapping[patient_id]
 
-        output[str(folder_name)].append(curr_dict) #was output[str(f)].append(curr_dict)
+        if not uid_mapping[study_instance_uid] in output[new_patient_id]:
+            output[new_patient_id][uid_mapping[study_instance_uid]] = [curr_dict]
+        else:
+            output[new_patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
 
-    #write_list(labels_found, 'labels.log')
+    write_list(labels_found, 'labels.log')
 
     return dict(output)
+
+
+
+def compute_bounding_box(label_fn):
+    # TODO: Better building of cache names.
+    # TODO: fix force_2d
+    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)[0]
+    bbox = bounding_box(label_arr)
+
+    # Classes cannot be collated in the standard pytorch collate function.
+    return [int(_) for _ in list(bbox)]
+
 
 
 def main():
     parser = argparse.ArgumentParser(description='Process dataset into convenient format.')
     parser.add_argument('path', type=Path, help='Path to dataset')
     parser.add_argument('dest', type=Path, help='Destination directory')
+    parser.add_argument('--dcis-labels', type=Path, help='filename to labels filename.')
+
     parser.add_argument('--copy-data', action='store_true', help='Copy data instead of symlinking.')
     args = parser.parse_args()
 
@@ -297,9 +320,11 @@ def main():
     uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
     logging.info('Writing new directory structure. This can take a while.')
     new_mammograms = create_temporary_file_structure(
-        mammograms, patient_mapping, uid_mapping, args.path, args.dest, create_links=not args.copy_data)
-    write_json(args.dest / 'dataset_description2.json', new_mammograms)
-    #write_list(new_mammograms.keys(), args.dest / 'imported_studies.log')
+        mammograms, patient_mapping, uid_mapping,
+        args.dest, dcis_labels=args.dcis_labels, create_links=not args.copy_data)
+
+    write_json(args.dest / 'dataset_description.json', new_mammograms)
+    write_list(new_mammograms.keys(), args.dest / 'imported_studies.log')
 
 
 if __name__ == '__main__':

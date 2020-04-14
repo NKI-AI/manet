@@ -1,9 +1,9 @@
-FROM nvidia/cuda:10.1-cudnn7-devel
+FROM ubuntu:18.04
+# nvidia/cuda:10.1-cudnn7-devel
 
-ENV CUDA_PATH /usr/local/cuda
-ENV CUDA_ROOT /usr/local/cuda/bin
-ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64
-
+#ENV CUDA_PATH /usr/local/cuda
+#ENV CUDA_ROOT /usr/local/cuda/bin
+#ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64
 
 RUN ldconfig
 RUN apt-get -qq update
@@ -38,7 +38,7 @@ RUN pip install dominate visdom runstats -q
 RUN pip install tb-nightly yacs -q
 RUN pip install --upgrade pip
 RUN pip install pydicom -q
-RUN pip install future packaging pytest coverage coveralls easydict tifffile demandimport simpleitk -q
+RUN pip install future packaging pytest coverage coveralls easydict tifffile demandimport simpleitk scikit-learn -q
 RUN pip install git+https://github.com/AIIMLab/fexp
 
 

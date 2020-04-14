@@ -33,6 +33,10 @@ class MammoDataset(Dataset):
             dataset_description = read_json(dataset_description)
         self.dataset_description = dataset_description
 
+        self.class_mapping = {1: 0,
+                              2: 0,
+                              3: 1}
+
         self.data = []
 
         self._cache_valid = True
@@ -47,18 +51,31 @@ class MammoDataset(Dataset):
             else:
                 self.logger.debug(f'Parsing directory {path}.')
                 for image_dict in self.dataset_description[path]:
-                    #curr_data_dict = {'case_path': path, 'image_fn': pathlib.Path(image_dict['filename'])}
-                    curr_data_dict = {'case_path': path, 'image_fn': image_dict['filename'], 'class': image_dict['DCIS_stage']}
+
+                    curr_data_dict = {'case_path': path,
+                                      'image_fn': image_dict['filename']}
+
                     if self.filter_negatives and 'label' in image_dict:
-                        label_fn = pathlib.Path(image_dict['label'])
-                        label_fns = image_dict['label'] #because pathlib.path not json serializable
-                        curr_data_dict['label_fn'] = label_fns
+                        label_fn = image_dict['label'] #because pathlib.path not json serializable
+                        curr_data_dict['label_fn'] = label_fn
 
                         if 'bbox' not in image_dict:
                             image = curr_data_dict['image_fn']
                             self.logger.info(
                                 f'Patient {path} with study {image} has no bounding box, skipping.')
                             continue
+                        if 'DCIS_stage' not in image_dict:
+                            image = curr_data_dict['image_fn']
+                            self.logger.warning(
+                                f'Patient {path} with study {image} has no DCIS grade but has a label.')
+                            continue
+
+                        if self.class_mapping:
+                            class_label = self.class_mapping[image_dict['DCIS_stage']]
+                        else:
+                            class_label = image_dict['DCIS_stage']
+
+                        curr_data_dict['DCIS_stage'] = class_label
                         curr_data_dict['bbox'] = image_dict['bbox']
 
                         self.data.append(curr_data_dict)
@@ -102,11 +119,11 @@ class MammoDataset(Dataset):
 
         image_fn = self.data_root / pathlib.Path(data_dict['image_fn'])
         label_fn = self.data_root / pathlib.Path(data_dict['label_fn'])
-        stage = data_dict['class']
-        if stage == 3:
-            b_stage = np.array([1])
-        else:
-            b_stage = np.array([0])
+        #stage = data_dict['class']
+        #if stage == 3:
+        #    b_stage = np.array([1])
+        #else:
+        #    b_stage = np.array([0])
 
         mammogram = read_mammogram(image_fn)
         mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
@@ -117,8 +134,7 @@ class MammoDataset(Dataset):
             'bbox': data_dict['bbox'],
             'image_fn': str(image_fn),  # Convenient for debugging errors in file loading
             'label_fn': str(label_fn),
-            'class': stage,
-            'b_class': b_stage
+            'class': data_dict['DCIS_stage']
         }
 
         if self.transform:
