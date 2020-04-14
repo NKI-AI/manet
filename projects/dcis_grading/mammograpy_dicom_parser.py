@@ -266,9 +266,9 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         except FileExistsError as e:
             logger.info(f'Symlinking for {fn} already exists.')
 
-        curr_dict = mammograms[str(fn)].copy()
+        curr_dict = {} # mammograms[str(fn)].copy()
 
-        patient_id = curr_dict['PatientID']
+        patient_id = mammograms[str(fn)]['PatientID']
 
         curr_dict['Original_PatientID'] = patient_id
         curr_dict['filename'] = str(new_fn.relative_to(new_path))
