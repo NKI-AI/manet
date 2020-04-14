@@ -172,14 +172,14 @@ class MammogramImage(Image):
         if self.photometric_interpretation == 'MONOCHROME1':
             image_max = self.raw_image.max()
             self._image = image_max - self.raw_image
-            if self.header['dicom_tags'][DICOM_MANUFACTURER] == 'Agfa-Gevaert':
-                if self.num_dicom_center_widths == 0:
+            if self.header['dicom_tags'][DICOM_MANUFACTURER] in ['Agfa-Gevaert', 'LORAD']:
+                if self.num_dicom_center_widths == 0 and self.header['dicom_tags'][DICOM_MANUFACTURER] == 'Agfa-Gevaert':
                     self.dicom_window_center = [image_max / 2]
                     self.dicom_window_width = [image_max]
                 else:
                     raise NotImplementedError
             else:
-                raise NotImplementedError(f"{self.data_origin}: self.header['dicom_tags'][DICOM_MANUFACTURER]")
+                raise NotImplementedError(f"{self.data_origin}: {self.header['dicom_tags'][DICOM_MANUFACTURER]}")
 
         if self._current_set_lut is not None and any([_ is not None for _ in self._current_set_center_width]):
             warnings.warn(f'Both LUT and center width are set, only LUT will be applied. '
