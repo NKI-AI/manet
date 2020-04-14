@@ -274,11 +274,12 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         curr_dict['filename'] = str(new_fn.relative_to(new_path))
         if label:
             curr_dict['label'] = str(label.relative_to(new_path))
-            curr_dict['DCIS_grade'] = dcis_dict[patient_id]
+            if patient_id in dcis_dict:
+                curr_dict['DCIS_grade'] = dcis_dict[patient_id]
             try:
                 curr_dict['bbox'] = compute_bounding_box(label)
-            except IndexError:
-                tqdm.write(f"Fail bbox compute: {curr_dict['label']}")
+            except (IndexError, ValueError) as e:
+                tqdm.write(f"Fail bbox compute: {curr_dict['label']}: {e}")
 
         new_patient_id = patient_mapping[patient_id]
 
@@ -294,7 +295,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
 def compute_bounding_box(label_fn):
     # TODO: Better building of cache names.
-    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)[0]  # TODO fix force_2d
+    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)  # TODO fix force_2d
     bbox = bounding_box(label_arr)
 
     # Classes cannot be collated in the standard pytorch collate function.
