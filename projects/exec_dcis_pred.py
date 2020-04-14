@@ -12,12 +12,12 @@ import numpy as np
 import logging
 import time
 import torch
-import apex
+# import apex
 import random
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-from apex import amp
+# from apex import amp
 
 from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
