@@ -230,10 +230,10 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     if cfg.MULTIGPU == 2:
         torch.cuda.synchronize()
         reduce_tensor_dict(metric_dict)
-    if args.local_rank == 0:
-        for key in metric_dict:
-            writer.add_scalar(key, metric_dict[key].item(), epoch)
-
+    # if args.local_rank == 0:
+    #    for key in metric_dict:
+    #        writer.add_scalar(key, metric_dict[key].item(), epoch)
+    #
     torch.cuda.empty_cache()
     if return_losses:
         return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start, losses
