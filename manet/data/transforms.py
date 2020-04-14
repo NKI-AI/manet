@@ -141,7 +141,7 @@ def build_transforms():
     training_transforms = Compose([
         RandomLUT(),
         RandomShiftBbox([100, 100]),
-        CropAroundBbox((1, 1024, 1024)),
+        CropAroundBbox((1, 512, 512)),
         RandomFlipTransform(0.5),
         RandomTransform([
             RandomGammaTransform((0.9, 1.1)),

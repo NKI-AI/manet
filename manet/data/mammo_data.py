@@ -91,7 +91,7 @@ class MammoDataset(Dataset):
             'label_fn': str(label_fn),
         }
         if 'class' in data_dict:
-             sample['class'] = np.asarray([data_dict['class']]).astype(np.int64)
+             sample['class'] = data_dict['class']
 
         if self.transform:
             sample = self.transform(sample)

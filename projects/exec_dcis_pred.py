@@ -87,12 +87,13 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
-        train_loss = torch.tensor(0.).to(args.device)
-
         output = ensure_list(model(images))
-        print(output[1].shape, ground_truth[1].shape)
+        print(output[0].device, ground_truth[0].device, loss_fn[0](output[0], ground_truth[0]).device)
+        if use_classifier:
+            print(output[0].shape, ground_truth[0].shape, output[1].shape, ground_truth[1].shape)
         losses = [loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
-        train_loss += sum(losses)
+        print(losses, sum(losses).shape)
+        train_loss = sum(losses)
 
         # Backprop the loss, use APEX if necessary
         if cfg.APEX >= 0:
