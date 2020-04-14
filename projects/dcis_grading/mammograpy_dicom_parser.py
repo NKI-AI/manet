@@ -296,7 +296,6 @@ def compute_bounding_box(label_fn):
     return [int(_) for _ in list(bbox)]
 
 
-
 def main():
     parser = argparse.ArgumentParser(description='Process dataset into convenient format.')
     parser.add_argument('path', type=Path, help='Path to dataset')

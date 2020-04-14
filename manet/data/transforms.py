@@ -4,6 +4,7 @@ Copyright (c) Nikita Moriakov and Jonas Teuwen
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+import torch
 import numpy as np
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
 from fexp.transforms import Compose, RandomTransform
@@ -96,6 +97,22 @@ class RandomGaussianNoise:
         return sample
 
 
+class ToTensor:
+    def __init__(self):
+        pass
+
+    def __call__(self, sample):
+        sample['image'] = torch.from_numpy(sample['image']).float()
+        if 'mask' in sample:
+            sample['mask'] = torch.from_numpy(sample['mask'].astype(np.uint8))
+        if 'class' in sample:
+            sample['class'] = torch.tensor(sample['mask']).type(torch.uint8)
+
+        return sample
+
+
+
+
 class RandomLUT:
     """
     Applies a random lookup table or window level for mammograms.
@@ -146,12 +163,16 @@ def build_transforms():
         RandomTransform([
             RandomGammaTransform((0.9, 1.1)),
             RandomGaussianNoise(0.05, as_percentage=True)]),
-    ])
+        ToTensor(),
+        ]
+    )
+
 
     validation_transforms = Compose([
         RandomLUT(),
         # ClipAndScale(None, None, [0, 1]),
-        CropAroundBbox((1, 1024, 1024))
+        CropAroundBbox((1, 1024, 1024)),
+        ToTensor(),
     ])
 
     return training_transforms, validation_transforms
