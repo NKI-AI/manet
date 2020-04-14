@@ -100,6 +100,13 @@ def find_mammograms(dicoms):
                     too_small.append(dicom_file)
                     continue
 
+                try:
+                    if len(x.pixel_array.shape) == 3:
+                        failed_to_parse.append(dicom_file)
+                        logger.warning(f'Skipping TOMO.')
+                except Exception: # compressed pixel_array
+                    pass
+
                 laterality, view = find_laterality(x)
                 if view == 'SPECIMEN':
                     logger.warning(f'{dicom_file} has view "SPECIMEN". Skipping.')
@@ -317,10 +324,13 @@ def main():
     patient_mapping = make_patient_mapping(patient_ids)
     write_json(args.dest / 'patient_mapping.json', patient_mapping)
 
+    uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
+
+    write_json(args.dest / 'uid_mapping.json', uid_mapping)
+
     import sys
     sys.exit()
 
-    uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
     logging.info('Writing new directory structure. This can take a while.')
     new_mammograms = create_temporary_file_structure(
         mammograms, patient_mapping, uid_mapping,
