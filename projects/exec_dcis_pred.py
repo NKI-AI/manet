@@ -67,12 +67,11 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             if iter_idx == 1:
                 break
 
-        images = batch['mammogram'].to(args.device)
+        images = batch['image'].to(args.device)
         masks = batch['mask'].to(args.device)
         ground_truth = [masks]
         if use_classifier:
-            ground_truth += [batch['class'].to(args.device)]
-            ground_truth[1].unsqueeze_(-1)
+            ground_truth.append(batch['class'].to(args.device))
 
         # Log first batch to tensorboard
         if iter_idx == 0 and epoch == 0:
@@ -97,11 +96,9 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             #plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
-        train_loss = torch.tensor(0.).to(args.device)
         output = ensure_list(model(images))
-
         losses = [loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))]
-        train_loss += sum(losses)
+        train_loss = sum(losses)
 
         # Backprop the loss, use APEX if necessary
         if cfg.APEX >= 0:
@@ -179,13 +176,12 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
     with torch.no_grad():
         for iter_idx, batch in enumerate(data_loader):
-            images = batch['mammogram'].to(args.device)
+            images = batch['image'].to(args.device)
             masks = batch['mask'].to(args.device)
 
             ground_truth = [masks]
             if use_classifier:
-                ground_truth += [batch['class'].to(args.device)]
-                ground_truth[1].unsqueeze_(-1)
+                ground_truth += batch['class'].to(args.device)
 
             output = ensure_list(model(images))
             output_softmax = [F.softmax(output[idx], 1) for idx in range(len(output))][0]
@@ -331,8 +327,8 @@ def main(args):
     training_description, validation_description = build_datasets(args.data_source)
     training_transforms, validation_transforms = build_transforms()
 
-    training_set = MammoDataset(training_description, args.data_source, transform=training_transforms, cache_dir='/tmp/train')
-    validation_set = MammoDataset(validation_description, args.data_source, transform=validation_transforms, cache_dir='/tmp/validate')
+    training_set = MammoDataset(training_description, args.data_source, transform=training_transforms, cache_dir='/var/tmp/train')
+    validation_set = MammoDataset(validation_description, args.data_source, transform=validation_transforms, cache_dir='/var/tmp/validate')
     logger.info(f'Train dataset size: {len(training_set)}. '
                 f'Validation data size: {len(validation_set)}.')
     training_sampler, validation_sampler = build_samplers(

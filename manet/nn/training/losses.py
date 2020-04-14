@@ -10,10 +10,11 @@ import torch
 def build_losses(use_classifier=False, multipliers=(1.0, 0.5), top_k=(None, None)):
     reduction = ['mean' if _top_k is None else False for _top_k in top_k]
 
-    loss_fns = [lambda x, y: (torch.Tensor([multipliers[0]]) * torch.nn.CrossEntropyLoss(weight=None, reduction='mean')(x, y))]
+    multipliers = [torch.tensor(_) for _ in multipliers]
+    loss_fns = [lambda x, y: multipliers[0].to(x.device) * torch.nn.CrossEntropyLoss(weight=None, reduction='mean')(x, y)]
 
     if use_classifier:
-        loss_fns.append(lambda x, y: torch.Tensor([multipliers[1]])*torch.nn.CrossEntropyLoss(weight=None, reduction='mean')(x, y))
+        loss_fns.append(lambda x, y: multipliers[1].to(x.device) * torch.nn.CrossEntropyLoss(weight=None, reduction='mean')(x, y))
 
     # TODO: Better lambda support (*x instead ox x,y)
     # if args.topk > 0.0 or args.randomk > 0.0:

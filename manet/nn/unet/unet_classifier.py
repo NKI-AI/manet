@@ -142,6 +142,6 @@ class Classifier(nn.Module):
         x = self.extra_conv(x)
         x = self.conv_block(GradMultiplication(self.grad_scale)(x))
         x = F.max_pool2d(x, kernel_size=x.size()[2:])
-        x = self.out_conv(x)
+        x = self.out_conv(x)[..., 0, 0]
 
         return x
