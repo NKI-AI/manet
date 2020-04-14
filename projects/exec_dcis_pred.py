@@ -159,7 +159,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
     aggregate_outputs = [False]
     if use_classifier:
-        aggregate_outputs += [True]
+        aggregate_outputs.append(True)
 
     stored_outputs = []
     stored_groundtruths = []
@@ -214,17 +214,16 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                    'DevDice': torch.tensor(np.mean(dices)).to(args.device)},
 
     # Compute metrics for stored output:
-    if False:
-        print(len(stored_outputs), stored_outputs)
+    if use_classifier:
         grab_idx = 1
-        outputs = np.asarray([_[grab_idx].cpu().numpy() for _ in stored_outputs])
-        gtrs = np.asarray([_[grab_idx].cpu().numpy() for _ in stored_groundtruths])
+        outputs = torch.stack([_[grab_idx] for _ in stored_outputs]).cpu().numpy()[:, 1]
+        gtrs = torch.stack([_[grab_idx] for _ in stored_groundtruths]).cpu().numpy()[:, 1]
         auc = roc_auc_score(gtrs, outputs)
         balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
-        f1_score = f1_score(gtrs, outputs)
+        f1_score_val = f1_score(gtrs, outputs)
         metric_dict['DevAUC'] = torch.tensor(auc).to(args.device)
         metric_dict['DevBalancedAcc'] = torch.tensor(balanced_accuracy).to(args.device)
-        metric_dict['DevF1Score'] = torch.tensor(f1_score).to(args.device)
+        metric_dict['DevF1Score'] = torch.tensor(f1_score_val).to(args.device)
 
 
     if cfg.MULTIGPU == 2:
