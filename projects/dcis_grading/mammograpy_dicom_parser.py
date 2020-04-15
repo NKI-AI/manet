@@ -153,13 +153,13 @@ def find_mammograms(dicoms):
     return mammograms, patient_ids, failed_to_parse
 
 
-def make_patient_mapping(patient_ids, encoding='10'):
+def make_patient_mapping(dest, patient_ids, encoding='10'):
     patient_ids = set(patient_ids)  # Remove duplicates
-    if not Path('NKI_mapping.dat').exists():
+    if not (dest / 'NKI_mapping.dat').exists():
         logger.info('NKI_mapping.dat does not exist! Creating.')
-        os.mknod('NKI_mapping.dat')
+        os.mknod(str(dest / 'NKI_mapping.dat'))
 
-    with open('NKI_mapping.dat', 'r') as f:
+    with open(str(dest / 'NKI_mapping.dat'), 'r') as f:
         content = f.readlines()
     mapping = {k: v for k, v in [_.strip().split(' ') for _ in content if _.strip() != '']}
 
@@ -329,7 +329,7 @@ def main():
         for line in failed_to_parse:
             f.write(line + '\n')
 
-    patient_mapping = make_patient_mapping(patient_ids)
+    patient_mapping = make_patient_mapping(args.dest, patient_ids)
     write_json(args.dest / 'patient_mapping.json', patient_mapping)
 
     studies_per_patient, uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
