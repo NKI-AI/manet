@@ -248,7 +248,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     logger.info(
         f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] '
         f'{metric_string}'
-        f'DevTime = {time.perf_counter() - start:.4f}s',
+        f'DevTime = {time.perf_counter() - start:.4f}s'
     )
 
     torch.cuda.empty_cache()
