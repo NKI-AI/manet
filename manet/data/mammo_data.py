@@ -114,4 +114,7 @@ def build_datasets(data_source):
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
 
+    logger.info(f'{len(training_description)} patients in training set.')
+    logger.info(f'{len(validation_description)} patients in validation set.')
+
     return training_description, validation_description
