@@ -287,6 +287,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
         current_mammogram_fn = Path(current_mammogram_fn)
         new_path_to_current_mammogram_fn = new_path_to_study / current_mammogram_fn.name
+        current_dictionary['image'] = str(new_path_to_current_mammogram_fn.relative_to(new_path))
 
         # Link or copy data to its new place
         try_copy_link(current_mammogram_fn, new_path_to_current_mammogram_fn, create_links)
@@ -297,7 +298,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
         if path_to_possible_label.exists():
             new_path_to_label = new_path_to_study / path_to_possible_label.name
             try_copy_link(path_to_possible_label, new_path_to_label, create_links)
-            current_dictionary['label'] = new_path_to_label.relative_to(new_path)
+            current_dictionary['label'] = str(new_path_to_label.relative_to(new_path))
             try:
                 bbox = compute_bounding_box(new_path_to_label)
                 current_dictionary['bbox'] = bbox
