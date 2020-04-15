@@ -196,9 +196,6 @@ def make_patient_mapping(dest, patient_ids, encoding='10', duplicates=None):
     for patient_id in patient_ids:
         # Check if patient id already exists in dataset, and if it does, continue.
         if patient_id not in mapping:
-            for duplicate_list in duplicates:
-                if patient_id in duplicate_list:
-
             new_patients.append(patient_id)
     n_cases = len(new_patients)
     logger.info(f'{n_cases} new cases.')
@@ -206,31 +203,33 @@ def make_patient_mapping(dest, patient_ids, encoding='10', duplicates=None):
         return mapping
 
     new_ids = [f'{encoding}' + '{:7d}'.format(idx).replace(' ', '0') for idx in range(start_at, start_at + n_cases)]
-    with open('NKI_mapping.dat', 'a') as f:
+    with open(dest / 'NKI_mapping.dat', 'a') as f:
         for idx, line in enumerate(new_patients):
             mapping[line] = new_ids[idx]
             f.write(f'{line} {new_ids[idx]}\n')
 
-    # Fix duplicates:
-    duplicates_mapping = defaultdict(list)
-    for duplicate_list in duplicates:
-        begin_key = duplicate_list.pop(0)
-        for other_key in duplicate_list:
-            duplicates_mapping[begin_key].append(other_key)
+    if duplicates is not None:
+        # Fix duplicates:
+        duplicates_mapping = defaultdict(list)
 
-    with open(str(dest / 'NKI_mapping.dat'), 'r') as f:
-        content = f.readlines()
-    mapping = {k: v for k, v in [_.strip().split(' ') for _ in content if _.strip() != '']}
+        for duplicate_list in duplicates:
+            begin_key = duplicate_list.pop(0)
+            for other_key in duplicate_list:
+                duplicates_mapping[begin_key].append(other_key)
 
-    for key in duplicates_mapping:
-        NKI_id = mapping[key]
-        for other in duplicates_mapping[key]:
-            mapping[other] = NKI_id
+        with open(str(dest / 'NKI_mapping.dat'), 'r') as f:
+            content = f.readlines()
+        mapping = {k: v for k, v in [_.strip().split(' ') for _ in content if _.strip() != '']}
 
-    # Write solution back
-    with open('NKI_mapping.dat', 'w') as f:
-        for key, value in mapping.items():
-            f.write(f'{key} {value}\n')
+        for key in duplicates_mapping:
+            NKI_id = mapping[key]
+            for other in duplicates_mapping[key]:
+                mapping[other] = NKI_id
+
+        # Write solution back
+        with open(dest / 'NKI_mapping.dat', 'w') as f:
+            for key, value in mapping.items():
+                f.write(f'{key} {value}\n')
 
     return mapping
 
