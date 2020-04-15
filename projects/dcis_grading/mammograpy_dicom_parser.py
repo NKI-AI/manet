@@ -104,6 +104,7 @@ def find_mammograms(dicoms):
                     if len(x.pixel_array.shape) == 3:
                         failed_to_parse.append(dicom_file)
                         logger.warning(f'Skipping TOMO.')
+                        continue
                 except Exception: # compressed pixel_array
                     pass
 
