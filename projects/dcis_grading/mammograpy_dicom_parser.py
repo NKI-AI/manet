@@ -180,7 +180,7 @@ def find_mammograms(dicoms):
     return mammograms, patient_ids, failed_to_parse
 
 
-def make_patient_mapping(dest, patient_ids, encoding='10', duplicates=None):
+def make_patient_mapping(dest, patient_ids, encoding='10'):
     patient_ids = set(patient_ids)  # Remove duplicates
     if not (dest / 'NKI_mapping.dat').exists():
         logger.info('NKI_mapping.dat does not exist! Creating.')
@@ -207,29 +207,6 @@ def make_patient_mapping(dest, patient_ids, encoding='10', duplicates=None):
         for idx, line in enumerate(new_patients):
             mapping[line] = new_ids[idx]
             f.write(f'{line} {new_ids[idx]}\n')
-
-    if duplicates is not None:
-        # Fix duplicates:
-        duplicates_mapping = defaultdict(list)
-
-        for duplicate_list in duplicates:
-            begin_key = duplicate_list.pop(0)
-            for other_key in duplicate_list:
-                duplicates_mapping[begin_key].append(other_key)
-
-        with open(str(dest / 'NKI_mapping.dat'), 'r') as f:
-            content = f.readlines()
-        mapping = {k: v for k, v in [_.strip().split(' ') for _ in content if _.strip() != '']}
-
-        for key in duplicates_mapping:
-            NKI_id = mapping[key]
-            for other in duplicates_mapping[key]:
-                mapping[other] = NKI_id
-
-        # Write solution back
-        with open(dest / 'NKI_mapping.dat', 'w') as f:
-            for key, value in mapping.items():
-                f.write(f'{key} {value}\n')
 
     return mapping
 
@@ -267,6 +244,7 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
         for idx, study_instance_uid in enumerate(new_study_instance_uids):
             if not study_instance_uid in study_instance_uids:
                 with open(Path(new_path) / mapping[patient_id] / 'studies.dat', 'a') as f:
+                    f.write(study_instance_uid + '\n')
                     f.write(study_instance_uid + '\n')
             uid_mapping[study_instance_uid] = '{:2d}'.format(idx + 1).replace(' ', '0')
 
@@ -351,7 +329,6 @@ def main():
     parser.add_argument('path', type=Path, help='Path to dataset')
     parser.add_argument('dest', type=Path, help='Destination directory')
     parser.add_argument('--dcis-labels', type=Path, help='filename to labels filename.')
-    parser.add_argument('--duplicates-list', type=Path, help='filename to duplicates.')
 
     parser.add_argument('--copy-data', action='store_true', help='Copy data instead of symlinking.')
     args = parser.parse_args()
@@ -364,15 +341,8 @@ def main():
     with open('failed_to_parse.log', 'a') as f:
         for line in failed_to_parse:
             f.write(line + '\n')
-            
-    if args.duplicates_list:
-        with open(args.duplicates_list, 'r') as f:
-            content = f.readlines()
-        duplicates = [_.strip().split(',') for _ in content]
-    else:
-        duplicates = None
 
-    patient_mapping = make_patient_mapping(args.dest, patient_ids, duplicates=duplicates)
+    patient_mapping = make_patient_mapping(args.dest, patient_ids)
     write_json(args.dest / 'patient_mapping.json', patient_mapping)
 
     studies_per_patient, uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
