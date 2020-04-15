@@ -242,7 +242,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             writer.add_scalar(key, metric_dict[key].item(), epoch)
 
     metric_string = f''
-    for k, v in metric_dict:
+    for k, v in metric_dict.items():
         metric_string += f'{k} = {v:.4g} '
 
     logger.info(
