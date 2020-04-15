@@ -14,7 +14,6 @@ import logging
 import argparse
 
 from collections import defaultdict
-from tqdm import tqdm
 from pydicom.errors import InvalidDicomError
 from pathlib import Path
 
@@ -83,7 +82,8 @@ def find_mammograms(dicoms):
     patient_ids = []
     bad_manufacturer = []
     too_small = []
-    for dicom_file in tqdm(dicoms):
+    for dicom_file in dicoms:
+        logger.info(f'Parsing {dicom_file}.')
         try:
             x = dicom.read_file(dicom_file, stop_before_pixels=True)
             if x.Modality == 'MG':
@@ -288,7 +288,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
             try:
                 curr_dict['bbox'] = compute_bounding_box(label)
             except (IndexError, ValueError) as e:
-                tqdm.write(f"Fail bbox compute: {curr_dict['label']}: {e}")
+                logger.error(f"Fail bbox compute: {curr_dict['label']}: {e}")
 
         new_patient_id = patient_mapping[patient_id]
 
