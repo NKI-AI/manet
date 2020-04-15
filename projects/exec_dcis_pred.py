@@ -209,24 +209,23 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
             dices.append(batch_dice.item())
             del output
 
-    metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
-                   'DevDice': torch.tensor(np.mean(dices)).to(args.device)},
+    metric_dict = {
+       'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
+       'DevDice': torch.tensor(np.mean(dices)).to(args.device)
+    }
 
     # Compute metrics for stored output:
     if use_classifier:
         grab_idx = 1
 
-        print(torch.stack([_[grab_idx] for _ in stored_outputs]).shape)
-
-        outputs = torch.stack([_[grab_idx] for _ in stored_outputs]).cpu().numpy()[:, 1]
-
-        gtrs = torch.stack([_[grab_idx] for _ in stored_groundtruths]).cpu().numpy()[:, 1]
+        outputs = torch.stack([_[grab_idx] for _ in stored_outputs]).cpu().numpy()[:, 0, 1].astype(np.float) # ?
+        gtrs = torch.stack([_[grab_idx] for _ in stored_groundtruths]).cpu().numpy()[:, 0].astype(np.float)
         auc = roc_auc_score(gtrs, outputs)
-        balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
-        f1_score_val = f1_score(gtrs, outputs)
+        # balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
+        #f1_score_val = f1_score(gtrs, outputs)
         metric_dict['DevAUC'] = torch.tensor(auc).to(args.device)
-        metric_dict['DevBalancedAcc'] = torch.tensor(balanced_accuracy).to(args.device)
-        metric_dict['DevF1Score'] = torch.tensor(f1_score_val).to(args.device)
+        # metric_dict['DevBalancedAcc'] = torch.tensor(balanced_accuracy).to(args.device)
+        # metric_dict['DevF1Score'] = torch.tensor(f1_score_val).to(args.device)
 
 
     if cfg.MULTIGPU == 2:
