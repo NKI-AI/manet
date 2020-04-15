@@ -223,6 +223,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         auc = roc_auc_score(gtrs, outputs)
         # balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
         #f1_score_val = f1_score(gtrs, outputs)
+        logger.info(metric_dict, auc)
         metric_dict['DevAUC'] = torch.tensor(auc).to(args.device)
         # metric_dict['DevBalancedAcc'] = torch.tensor(balanced_accuracy).to(args.device)
         # metric_dict['DevF1Score'] = torch.tensor(f1_score_val).to(args.device)
