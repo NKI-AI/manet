@@ -41,7 +41,7 @@ def try_copy_link(a, b, create_links):
             return
         else:
             logger.error(
-                f'Something is seriously {b} already exists, but has a different checksum.')
+                f'Something is seriously {b} already exists, but has a different checksum from {a}.')
 
 
 def md5(fname):
