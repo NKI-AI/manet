@@ -299,7 +299,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
             try_copy_link(path_to_possible_label, new_path_to_label, create_links)
             current_dictionary['label'] = new_path_to_label.relative_to(new_path)
             try:
-                bbox = bounding_box(new_path_to_label)
+                bbox = compute_bounding_box(new_path_to_label)
                 current_dictionary['bbox'] = bbox
             except (IndexError, ValueError) as e:
                 logger.error(f"Fail bbox compute: {new_path_to_label}: {e}")
