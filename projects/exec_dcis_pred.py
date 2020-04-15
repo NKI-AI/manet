@@ -309,7 +309,7 @@ def main(args):
         multi_gpu.synchronize()
 
     logger.info('Building model.')
-    model = build_model(args.device, use_classifier=cfg.UNET.USE_CLASSIFIER)
+    model = build_model(args.device, use_classifier=cfg.UNET.USE_CLASSIFIER, classifier_grad_scale=0.25)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)
