@@ -306,7 +306,7 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
         output[new_patient_id][new_study_instance_uid].append(current_dictionary)
 
-    return dict(output)
+    return output
 
 
 def compute_bounding_box(label_fn):
