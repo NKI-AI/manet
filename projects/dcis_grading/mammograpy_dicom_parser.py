@@ -220,7 +220,7 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
                     f.write(study_instance_uid + '\n')
             uid_mapping[study_instance_uid] = '{:2d}'.format(idx + 1).replace(' ', '0')
 
-    return uid_mapping
+    return dict(studies_per_patient), uid_mapping
 
 
 def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, dcis_labels=None, create_links=True):
@@ -332,8 +332,9 @@ def main():
     patient_mapping = make_patient_mapping(patient_ids)
     write_json(args.dest / 'patient_mapping.json', patient_mapping)
 
-    uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
+    studies_per_patient, uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
 
+    write_json(args.dest / 'studies_per_patient.json', studies_per_patient)
     write_json(args.dest / 'uid_mapping.json', uid_mapping)
 
     logging.info('Writing new directory structure. This can take a while.')
