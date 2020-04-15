@@ -12,10 +12,13 @@ import sys
 import shutil
 import logging
 import argparse
+import hashlib
+
 
 from collections import defaultdict
 from pydicom.errors import InvalidDicomError
 from pathlib import Path
+
 
 from fexp.utils.io import write_json
 from fexp.readers import read_image
@@ -23,6 +26,30 @@ from fexp.utils.bbox import bounding_box
 
 logger = logging.getLogger('mammo_importer')
 logging.getLogger().setLevel(logging.INFO)
+
+
+def try_copy_link(a, b, create_links):
+    try:
+        if create_links:
+            os.symlink(a, b)
+        else:
+            shutil.copy(a, b)
+
+    except FileExistsError as e:
+        # Perhaps the file already exists, let's check if it is the same.
+        if md5(a) == md5(b):
+            return
+        else:
+            logger.error(
+                f'Something is seriously {b} already exists, but has a different checksum.')
+
+
+def md5(fname):
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 def write_list(x, path):
@@ -224,7 +251,7 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
 
 
 def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, dcis_labels=None, create_links=True):
-    output = defaultdict(dict)
+    output = dict()
     labels_found = []
 
     dcis_dict = {}
@@ -233,71 +260,51 @@ def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, ne
 
     fns_added = []
 
-    for fn in mammograms:
-        patient_id = mammograms[fn]['PatientID']
-        study_instance_uid = mammograms[fn]['StudyInstanceUID']
-        folder_name = Path(patient_mapping[patient_id]) / uid_mapping[study_instance_uid]
+    for current_mammogram_fn in mammograms:
+        current_dictionary = {}
 
-        f = new_path / folder_name
-        f.mkdir(exist_ok=True)
-        fn = Path(fn)
-        new_fn = f / Path(fn.name)
-        label = None
-        # Also copy over labels
-        label_path = Path(str(fn).replace('.dcm', '-label.nrrd'))
-        # TODO: Find labels with other name and log this
+        patient_id = mammograms[current_mammogram_fn]['PatientID']
 
-        if label_path.exists():
-            logger.info(f'Linking / copying label {label_path}')
-            try:
-                if create_links:
-                    os.symlink(label_path, f / Path(label_path.name))
-                else:
-                    shutil.copy(label_path, f / Path(label_path.name))
+        current_dictionary['Original_PatientID'] = patient_id
 
-            except FileExistsError as e:
-                logger.info(f'Label {label_path} exists.')
-            label = f / Path(label_path.name)
-            labels_found.append(str(label))
-
-        try:
-            if create_links:
-                os.symlink(fn, new_fn)
-            else:
-                shutil.copy(fn, new_fn)
-
-        except FileExistsError as e:
-            logger.info(f'Symlinking for {fn} already exists.')
-
-        if new_fn in fns_added:
-            continue
-            # sys.exit(f'{new_fn} already in list')
-
-        fns_added.append(new_fn)
-
-        curr_dict = {}  # mammograms[str(fn)].copy()
-
-        patient_id = mammograms[str(fn)]['PatientID']
-
-        curr_dict['Original_PatientID'] = patient_id
-        curr_dict['filename'] = str(new_fn.relative_to(new_path))
-        if label:
-            curr_dict['label'] = str(label.relative_to(new_path))
-            if patient_id in dcis_dict:
-                curr_dict['DCIS_grade'] = dcis_dict[patient_id]
-            try:
-                curr_dict['bbox'] = compute_bounding_box(label)
-            except (IndexError, ValueError) as e:
-                logger.error(f"Fail bbox compute: {curr_dict['label']}: {e}")
+        # Get DCIS label
+        if patient_id in dcis_dict:
+            current_dictionary['DCIS_grade'] = dcis_dict[patient_id]
 
         new_patient_id = patient_mapping[patient_id]
 
-        study_id = uid_mapping[study_instance_uid]
-        if study_id not in output[new_patient_id]:
-            output[new_patient_id][study_id] = []
-        output[new_patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
+        if new_patient_id not in output:
+            output[new_patient_id] = {}
 
-    write_list(labels_found, 'labels.log')
+        study_instance_uid = mammograms[current_mammogram_fn]['StudyInstanceUID']
+        new_study_instance_uid = uid_mapping[study_instance_uid]
+
+        if new_study_instance_uid not in output[new_patient_id]:
+            output[new_patient_id][new_study_instance_uid] = []
+
+        new_path_to_study = new_path / new_patient_id / new_study_instance_uid
+        new_path_to_study.mkdir(exist_ok=True)
+
+        current_mammogram_fn = Path(current_mammogram_fn)
+        new_path_to_current_mammogram_fn = new_path_to_study / current_mammogram_fn.name
+
+        # Link or copy data to its new place
+        try_copy_link(current_mammogram_fn, new_path_to_current_mammogram_fn, create_links)
+
+        # Check for label
+        path_to_possible_label = Path(str(current_mammogram_fn).replace('.dcm', '-label.nrrd'))
+
+        if path_to_possible_label.exists():
+            new_path_to_label = new_path_to_study / path_to_possible_label.name
+            try_copy_link(path_to_possible_label, new_path_to_label, create_links)
+            current_dictionary['label'] = new_path_to_label.relative_to(new_path)
+            try:
+                bbox = bounding_box(new_path_to_label)
+                current_dictionary['bbox'] = bbox
+            except (IndexError, ValueError) as e:
+                logger.error(f"Fail bbox compute: {new_path_to_label}: {e}")
+
+        output[new_patient_id][new_study_instance_uid].append(current_dictionary)
 
     return dict(output)
 
