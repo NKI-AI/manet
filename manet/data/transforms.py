@@ -144,7 +144,11 @@ class RandomLUT:
                 if voi_lut_function == 'SIGMOID':
                     dicom_cw_idx = 0
                 else:
-                    dicom_cw_idx = np.random.choice(num_center_widths)
+                    try:
+                        dicom_cw_idx = np.random.choice(num_center_widths)
+                    except ValueError:
+                        print(image_fn, num_center_widths, num_dicom_luts, voi_lut_function)
+                        raise ValueError(f'boe {image_fn}, {num_center_widths}, {num_dicom_luts}, {voi_lut_function}')
                 dicom_window = [mammogram.dicom_window_center[dicom_cw_idx], mammogram.dicom_window_width[dicom_cw_idx]]
                 dicom_window += np.random.uniform(size=2) * self.window_jitter_percentage
             else:
@@ -155,23 +159,21 @@ class RandomLUT:
         return sample
 
 
-def build_transforms():
+def build_transforms(random_shift=(150, 150), gaussian_noise_percentage=0.025, gamma_range=(0.95, 1.05)):
     training_transforms = Compose([
         RandomLUT(),
-        RandomShiftBbox([100, 100]),
+        RandomShiftBbox(random_shift),
         CropAroundBbox((1, 1024, 1024)),
         RandomFlipTransform(0.5),
         RandomTransform([
-            RandomGammaTransform((0.9, 1.1)),
-            RandomGaussianNoise(0.05, as_percentage=True)]),
+            RandomGammaTransform(gamma_range),
+            RandomGaussianNoise(gaussian_noise_percentage, as_percentage=True)]),
         ToTensor(),
         ]
     )
 
-
     validation_transforms = Compose([
         RandomLUT(),
-        # ClipAndScale(None, None, [0, 1]),
         CropAroundBbox((1, 1024, 1024)),
         ToTensor(),
     ])

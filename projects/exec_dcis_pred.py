@@ -246,11 +246,11 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
     metric_string = f''
     for k, v in metric_dict.items():
-        metric_string += f'{k} = {v:.4g} '
+        metric_string += f'{k} = {v:.4g}'
 
     logger.info(
         f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] '
-        f'{metric_string}'
+        f'{metric_string} '
         f'DevTime = {time.perf_counter() - start:.4f}s'
     )
 
@@ -312,7 +312,8 @@ def main(args):
         multi_gpu.synchronize()
 
     logger.info('Building model.')
-    model = build_model(args.device, use_classifier=cfg.UNET.USE_CLASSIFIER, classifier_grad_scale=0.25)
+    model = build_model(use_classifier=cfg.UNET.USE_CLASSIFIER,
+                        classifier_grad_scale=cfg.UNET.CLASSIFIER_GRADIENT_MULT).to(args.device)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)
