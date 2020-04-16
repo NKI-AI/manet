@@ -36,5 +36,5 @@ class DefaultConfig:
 class UnetConfig(ModelConfig):
     AUG_LST = []
     USE_CLASSIFIER: bool = False
-
+    CLASSIFIER_GRADIENT_MULT: float = 0.1
 
