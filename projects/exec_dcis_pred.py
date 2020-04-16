@@ -70,7 +70,7 @@ def log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, over
         writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
 
 
-def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
+def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
     model.train()
     avg_loss = 0.
     avg_dice = 0.
@@ -169,7 +169,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
+def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
     logger.info(f'Evaluation for epoch {epoch + 1}')
     model.eval()
 
@@ -377,11 +377,11 @@ def main(args):
             if cfg.MULTIGPU == 2:
                 training_sampler.set_epoch(epoch)
 
-            train_loss, train_time = train_epoch(args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
+            train_loss, train_time = train_epoch(cfg, args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
                                                  use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
             validate_metrics = evaluate(
-                args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
+                cfg, args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
             if args.local_rank == 0:
                 save_model(exp_path, epoch, model, optimizer, lr_scheduler)
@@ -393,7 +393,7 @@ def main(args):
 
     # Test model if necessary
     if args.test:
-        validate_metrics = evaluate(args, epoch, model, validation_loader, writer, exp_path)
+        validate_metrics = evaluate(cfg, args, epoch, model, validation_loader, writer, exp_path)
     writer.close()
 
 
