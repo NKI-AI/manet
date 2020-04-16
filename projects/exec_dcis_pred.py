@@ -12,13 +12,12 @@ import numpy as np
 import logging
 import time
 import torch
-#import apex
-import pathlib
+# import apex
 import random
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-#from apex import amp
+# from apex import amp
 
 from config.base_config import cfg, cfg_from_file
 from config.base_args import Args
@@ -50,9 +49,28 @@ random.seed(3145)
 torch.manual_seed(3145)
 
 
+def log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, overlay_threshold=0.4):
+    image_arr = images.detach().cpu().numpy()[0, 0, ...]
+    masks_arr = masks.detach().cpu()[0, ...]
+
+    plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
+    plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
+
+    writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
+    writer.add_image('validation/ground_truth', plot_gt, epoch, dataformats='HWC')
+
+    if output_softmax is not None:
+        output_arr = output_softmax[0].detach().cpu().numpy()[0, 1, ...]
+        plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
+        plot_overlay = torch.from_numpy(
+            np.array(plot_2d(
+                image_arr, mask=output_arr, overlay_threshold=overlay_threshold, overlay_alpha=0.5)))
+
+        writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
+        writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
+
+
 def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
-    segmentation_path = pathlib.Path(args.experiment_directory) / args.name / 'segmentations'
-    
     model.train()
     avg_loss = 0.
     avg_dice = 0.
@@ -89,11 +107,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             # writer.add_image('masks', mask_grid, 0)
             # writer.add_graph(model, images.detach().cpu())
 
-            first_image = plot_2d(image_arr, mask=masks_arr)
-            first_image.save(segmentation_path / 'first_image.png')
-                        
-            plot_overlay = torch.from_numpy(np.array(first_image))
-            #plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
+            plot_overlay = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
             writer.add_image('train/overlay', plot_overlay, epoch, dataformats='HWC')
 
         output = ensure_list(model(images))
@@ -139,11 +153,10 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
                 writer.add_scalar(key, metric_dict[key].item(), global_step + iter_idx)
                 writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step + iter_idx)
 
-        loss_str = f'Loss = {train_loss.item():.4f} Avg Loss = {avg_loss:.4f} '
-        for loss_idx, loss in enumerate(losses):
-            loss_str += f'Loss_{loss_idx} = {loss.item():.4f} '
-
         if iter_idx % cfg.REPORT_INTERVAL == 0:
+            loss_str = f'Loss = {train_loss.item():.4f} Avg Loss = {avg_loss:.4f} '
+            for loss_idx, loss in enumerate(losses):
+                loss_str += f'Loss_{loss_idx} = {loss.item():.4f} '
             logger.info(
                 f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
                 f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
@@ -157,7 +170,6 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
     return avg_loss, time.perf_counter() - start_epoch
 
 def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
-    segmentation_path = pathlib.Path(args.experiment_directory) / args.name / 'segmentations'
     logger.info(f'Evaluation for epoch {epoch + 1}')
     model.eval()
 
@@ -169,7 +181,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
     aggregate_outputs = [False]
     if use_classifier:
-        aggregate_outputs += [True]
+        aggregate_outputs.append(True)
 
     stored_outputs = []
     stored_groundtruths = []
@@ -196,25 +208,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
 
             if iter_idx < 1:
                 # TODO: Multiple images, using a gridding function.
-                image_arr = images.detach().cpu().numpy()[0, 0, ...]
-                output_arr = output_softmax[0].detach().cpu().numpy()[0, 1, ...]
-                masks_arr = masks.detach().cpu()[0, ...]
-
-                plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
-                plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
-                plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
-                plot_overlay = torch.from_numpy(
-                    np.array(plot_2d(
-                        image_arr, mask=output_arr, overlay_threshold=0.25, overlay_alpha=0.5)))
-
-                #plot_overlay.save(segmentation_path / f'image_{epoch}.png')
-                overlay_image = plot_2d(image_arr, mask=output_arr)
-                overlay_image.save(segmentation_path / 'overlay_image.png')
-                        
-                writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
-                writer.add_image('validation/ground_truth', plot_gt, epoch, dataformats='HWC')
-                writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
-                writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
+                log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, overlay_threshold=0.4)
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
 
@@ -234,6 +228,7 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         outputs = torch.stack([_[grab_idx][:,1] for _ in stored_outputs]).cpu().numpy()
         gtrs = torch.stack([_[grab_idx] for _ in stored_groundtruths]).cpu().numpy()
         auc = roc_auc_score(gtrs, outputs)
+        logger.info(metric_dict, auc)
         outputs_pred = (outputs > 0.5)
         balanced_accuracy = balanced_accuracy_score(gtrs, outputs_pred, sample_weight=None, adjusted=False)
         f1_score_val = f1_score(gtrs, outputs_pred)
@@ -249,11 +244,19 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
         for key in metric_dict:
             writer.add_scalar(key, metric_dict[key].item(), epoch)
 
+    metric_string = f''
+    for k, v in metric_dict.items():
+        metric_string += f'{k} = {v:.4g} '
+
+    logger.info(
+        f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] '
+        f'{metric_string}'
+        f'DevTime = {time.perf_counter() - start:.4f}s'
+    )
+
     torch.cuda.empty_cache()
-    if return_losses:
-        return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start, losses
-    else:
-        return metric_dict['DevLoss'].item(), metric_dict['DevDice'], time.perf_counter() - start
+
+    return metric_dict
 
 
 def build_dataloader(batch_size, training_set, training_sampler, validation_set=None, validation_sampler=None):
@@ -309,7 +312,7 @@ def main(args):
         multi_gpu.synchronize()
 
     logger.info('Building model.')
-    model = build_model(args.device, use_classifier=cfg.UNET.USE_CLASSIFIER)
+    model = build_model(args.device, use_classifier=cfg.UNET.USE_CLASSIFIER, classifier_grad_scale=0.25)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)
@@ -372,17 +375,12 @@ def main(args):
             train_loss, train_time = train_epoch(args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
                                                  use_classifier=cfg.UNET.USE_CLASSIFIER)
 
-            dev_loss, dev_dice, dev_time = evaluate(
-                args, epoch, model, validation_loader, writer, exp_path, return_losses=False,
-                use_classifier=cfg.UNET.USE_CLASSIFIER)
+            validate_metrics = evaluate(
+                args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.UNET.USE_CLASSIFIER)
 
             if args.local_rank == 0:
                 save_model(exp_path, epoch, model, optimizer, lr_scheduler)
-                logger.info(
-                    f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] TrainLoss = {train_loss:.4g} '
-                    f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '
-                    f'TrainTime = {train_time:.4f}s DevTime = {dev_time:.4f}s',
-                )
+
             # if (cfg.HARD_MINING_FREQ > 0) and (epoch + 1) % cfg.HARD_MINING_FREQ == 0:
             #     del train_loader, train_sampler
             #     logger.info('Updating samplers for hard mining.')
@@ -390,12 +388,7 @@ def main(args):
 
     # Test model if necessary
     if args.test:
-        dev_loss, dev_dice, dev_time = evaluate(args, epoch, model, validation_loader, writer, exp_path)
-        logger.info(
-            f'Epoch = [{epoch:4d}/{cfg.N_EPOCHS:4d}] '
-            f'DevLoss = {dev_loss:.4g} DevDice = {dev_dice:.4g} '
-            f'TrainTime = {train_time:.4f}s DevTime = {dev_time:.4f}s',
-        )
+        validate_metrics = evaluate(args, epoch, model, validation_loader, writer, exp_path)
     writer.close()
 
 

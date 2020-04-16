@@ -38,50 +38,45 @@ class MammoDataset(Dataset):
                               3: 1}
 
         self.data = []
-
         self._cache_valid = True
         self.validate_cache()  # Pass
 
-        for path in self.dataset_description:
-            data_cache = self.cache_dir / hashlib.sha224(str(path).encode()).hexdigest()
+        for idx, patient in enumerate(self.dataset_description):
+            data_cache = self.cache_dir / hashlib.sha224(str(patient).encode()).hexdigest()
             if data_cache.exists() and self._cache_valid:
                 curr_data_cache = read_json(data_cache)
-                print(f'Pulling directory {path} from cache.')
+                print(f'Pulling directory {patient} from cache.')
                 self.data.append(curr_data_cache)
             else:
-                self.logger.debug(f'Parsing directory {path}.')
-                for image_dict in self.dataset_description[path]:
+                self.logger.debug(f'Parsing patient {patient} ({idx + 1}/{len(self.dataset_description)}).')
+                for study_id in self.dataset_description[patient]:
+                    for image_dict in self.dataset_description[patient][study_id]:
+                        curr_data_dict = {'case_path': patient,
+                                          'image_fn': image_dict['image'],
+                                          }
+                        if self.filter_negatives and 'label' in image_dict:
+                            label_fn = image_dict['label'] #because pathlib.path not json serializable
+                            curr_data_dict['label_fn'] = label_fn
 
-                    curr_data_dict = {'case_path': path,
-                                      'image_fn': image_dict['filename']}
+                            if 'bbox' not in image_dict:
+                                self.logger.info(f'Patient {patient} with study {study_id} has no bounding box, skipping.')
+                                continue
+                            if 'DCIS_grade' not in image_dict:
+                                self.logger.warning(f'Patient {patient} with study {study_id} '
+                                                    f'has no DCIS grade but has a label.')
+                                continue
+                            if self.class_mapping:
+                                class_label = self.class_mapping[image_dict['DCIS_grade']]
+                            else:
+                                class_label = image_dict['DCIS_grade']
 
-                    if self.filter_negatives and 'label' in image_dict:
-                        label_fn = image_dict['label'] #because pathlib.path not json serializable
-                        curr_data_dict['label_fn'] = label_fn
+                            curr_data_dict['class'] = class_label
+                            curr_data_dict['bbox'] = image_dict['bbox']
 
-                        if 'bbox' not in image_dict:
-                            image = curr_data_dict['image_fn']
-                            self.logger.info(
-                                f'Patient {path} with study {image} has no bounding box, skipping.')
-                            continue
-                        if 'DCIS_stage' not in image_dict:
-                            image = curr_data_dict['image_fn']
-                            self.logger.warning(
-                                f'Patient {path} with study {image} has no DCIS grade but has a label.')
-                            continue
-
-                        if self.class_mapping:
-                            class_label = self.class_mapping[image_dict['DCIS_stage']]
+                            self.data.append(curr_data_dict)
+                            write_json(data_cache, curr_data_dict)
                         else:
-                            class_label = image_dict['DCIS_stage']
-
-                        curr_data_dict['class'] = class_label
-                        curr_data_dict['bbox'] = image_dict['bbox']
-
-                        self.data.append(curr_data_dict)
-                        write_json(data_cache, curr_data_dict)
-                    else:
-                        NotImplementedError()
+                            NotImplementedError()
 
         self.logger.info(f'Loaded dataset of size {len(self.data)}.')
 
@@ -119,14 +114,13 @@ class MammoDataset(Dataset):
 
         image_fn = self.data_root / pathlib.Path(data_dict['image_fn'])
         label_fn = self.data_root / pathlib.Path(data_dict['label_fn'])
-        #stage = data_dict['class']
-        #if stage == 3:
-        #    b_stage = np.array([1])
-        #else:
-        #    b_stage = np.array([0])
 
-        mammogram = read_mammogram(image_fn)
-        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64)  # int64 gets cast to LongTensor
+        try:
+            mammogram = read_mammogram(image_fn)
+        except ValueError as e:
+            raise ValueError(f'{image_fn}: {e}')
+
+        mask = read_image(label_fn, force_2d=True, no_metadata=True, dtype=np.int64) # TODO: fix in fexp!  # int64 gets cast to LongTensor
 
         sample = {
             'image': mammogram,
@@ -155,5 +149,8 @@ def build_datasets(data_source):
 
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
     validation_description = {k: v for k, v in mammography_description.items() if k in validation_list}
+
+    logger.info(f'{len(training_description)} patients in training set.')
+    logger.info(f'{len(validation_description)} patients in validation set.')
 
     return training_description, validation_description

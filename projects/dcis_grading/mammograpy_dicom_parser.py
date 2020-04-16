@@ -12,9 +12,10 @@ import sys
 import shutil
 import logging
 import argparse
+import hashlib
+
 
 from collections import defaultdict
-from tqdm import tqdm
 from pydicom.errors import InvalidDicomError
 from pathlib import Path
 
@@ -24,6 +25,30 @@ from fexp.utils.bbox import bounding_box
 
 logger = logging.getLogger('mammo_importer')
 logging.getLogger().setLevel(logging.INFO)
+
+
+def try_copy_link(a, b, create_links):
+    try:
+        if create_links:
+            os.symlink(a, b)
+        else:
+            shutil.copy(a, b)
+
+    except FileExistsError as e:
+        # Perhaps the file already exists, let's check if it is the same.
+        if md5(a) == md5(b):
+            return
+        else:
+            logger.error(
+                f'Something is seriously {b} already exists, but has a different checksum from {a}.')
+
+
+def md5(fname):
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 def write_list(x, path):
@@ -83,7 +108,8 @@ def find_mammograms(dicoms):
     patient_ids = []
     bad_manufacturer = []
     too_small = []
-    for dicom_file in tqdm(dicoms):
+    for dicom_file in dicoms:
+        logger.info(f'Parsing {dicom_file}.')
         try:
             x = dicom.read_file(dicom_file, stop_before_pixels=True)
             if x.Modality == 'MG':
@@ -100,6 +126,14 @@ def find_mammograms(dicoms):
                     too_small.append(dicom_file)
                     continue
 
+                try:
+                    if len(x.pixel_array.shape) == 3:
+                        failed_to_parse.append(dicom_file)
+                        logger.warning(f'Skipping TOMO.')
+                        continue
+                except Exception: # compressed pixel_array
+                    pass
+
                 laterality, view = find_laterality(x)
                 if view == 'SPECIMEN':
                     logger.warning(f'{dicom_file} has view "SPECIMEN". Skipping.')
@@ -110,9 +144,9 @@ def find_mammograms(dicoms):
                     'PatientID': x.PatientID,
                     'StudyInstanceUID': x.StudyInstanceUID,
                     'SeriesInstanceUID': x.SeriesInstanceUID,
-                    'SeriesDescription': x.SeriesDescription,
-                    'InstitutionName': x.InstitutionName,
-                    'Manufacturer': x.Manufacturer,
+                    'SeriesDescription': getattr(x, 'SeriesDescription', ''),
+                    'InstitutionName': getattr(x, 'InstitutionName', ''),
+                    'Manufacturer': getattr(x, 'Manufacturer', ''),
                     'ViewPosition': view if view else 'NA',
                     'Laterality': laterality if laterality else 'NA',
                     'ImageType': list(x.ImageType)
@@ -145,13 +179,13 @@ def find_mammograms(dicoms):
     return mammograms, patient_ids, failed_to_parse
 
 
-def make_patient_mapping(patient_ids, encoding='10'):
+def make_patient_mapping(dest, patient_ids, encoding='10'):
     patient_ids = set(patient_ids)  # Remove duplicates
-    if not Path('NKI_mapping.dat').exists():
+    if not (dest / 'NKI_mapping.dat').exists():
         logger.info('NKI_mapping.dat does not exist! Creating.')
-        os.mknod('NKI_mapping.dat')
+        os.mknod(str(dest / 'NKI_mapping.dat'))
 
-    with open('NKI_mapping.dat', 'r') as f:
+    with open(str(dest / 'NKI_mapping.dat'), 'r') as f:
         content = f.readlines()
     mapping = {k: v for k, v in [_.strip().split(' ') for _ in content if _.strip() != '']}
 
@@ -168,7 +202,7 @@ def make_patient_mapping(patient_ids, encoding='10'):
         return mapping
 
     new_ids = [f'{encoding}' + '{:7d}'.format(idx).replace(' ', '0') for idx in range(start_at, start_at + n_cases)]
-    with open('NKI_mapping.dat', 'a') as f:
+    with open(dest / 'NKI_mapping.dat', 'a') as f:
         for idx, line in enumerate(new_patients):
             mapping[line] = new_ids[idx]
             f.write(f'{line} {new_ids[idx]}\n')
@@ -210,86 +244,79 @@ def rewrite_structure(mammograms_dict, mapping, new_path):
             if not study_instance_uid in study_instance_uids:
                 with open(Path(new_path) / mapping[patient_id] / 'studies.dat', 'a') as f:
                     f.write(study_instance_uid + '\n')
+                    f.write(study_instance_uid + '\n')
             uid_mapping[study_instance_uid] = '{:2d}'.format(idx + 1).replace(' ', '0')
 
-    return uid_mapping
+    return dict(studies_per_patient), uid_mapping
 
 
 def create_temporary_file_structure(mammograms, patient_mapping, uid_mapping, new_path, dcis_labels=None, create_links=True):
-    output = defaultdict(dict)
+    output = dict()
     labels_found = []
 
     dcis_dict = {}
     if dcis_labels:
         dcis_dict = {x.split('\t')[0].strip(): int(x.split('\t')[1].strip()) for x in dcis_labels.read_text().split('\n') if x}
 
-    for fn in mammograms:
-        patient_id = mammograms[fn]['PatientID']
-        study_instance_uid = mammograms[fn]['StudyInstanceUID']
-        folder_name = Path(patient_mapping[patient_id]) / uid_mapping[study_instance_uid]
+    fns_added = []
 
-        f = new_path / folder_name
-        f.mkdir(exist_ok=True)
-        fn = Path(fn)
-        new_fn = f / Path(fn.name)
-        label = None
-        # Also copy over labels
-        label_path = Path(str(fn).replace('.dcm', '-label.nrrd'))
-        # TODO: Find labels with other name and log this
+    for current_mammogram_fn in mammograms:
+        current_dictionary = {}
 
-        if label_path.exists():
-            logger.info(f'Linking / copying label {label_path}')
-            try:
-                if create_links:
-                    os.symlink(label_path, f / Path(label_path.name))
-                else:
-                    shutil.copy(label_path, f / Path(label_path.name))
+        patient_id = mammograms[current_mammogram_fn]['PatientID']
 
-            except FileExistsError as e:
-                logger.info(f'Label {label_path} exists.')
-            label = f / Path(label_path.name)
-            labels_found.append(str(label))
+        current_dictionary['Original_PatientID'] = patient_id
 
-        try:
-            if create_links:
-                os.symlink(fn, new_fn)
-            else:
-                shutil.copy(fn, new_fn)
-
-        except FileExistsError as e:
-            logger.info(f'Symlinking for {fn} already exists.')
-
-        curr_dict = mammograms[str(fn)].copy()
-
-        # Do stuff here to link label.
-
-        patient_id = curr_dict['PatientID']
-
-        curr_dict['Original_PatientID'] = patient_id
-        curr_dict['filename'] = str(new_fn.relative_to(new_path))
-        if label:
-            curr_dict['label'] = str(label.relative_to(new_path))
-            curr_dict['DCIS_grade'] = dcis_dict[patient_id]
-            try:
-                curr_dict['bbox'] = compute_bounding_box(label)
-            except IndexError:
-                tqdm.write(f"Fail bbox compute: {curr_dict['label']}")
+        # Get DCIS label
+        if patient_id in dcis_dict:
+            current_dictionary['DCIS_grade'] = dcis_dict[patient_id]
 
         new_patient_id = patient_mapping[patient_id]
 
-        if not uid_mapping[study_instance_uid] in output[new_patient_id]:
-            output[new_patient_id][uid_mapping[study_instance_uid]] = [curr_dict]
-        else:
-            output[new_patient_id][uid_mapping[study_instance_uid]].append(curr_dict)
+        if new_patient_id not in output:
+            output[new_patient_id] = {}
 
-    write_list(labels_found, 'labels.log')
+        study_instance_uid = mammograms[current_mammogram_fn]['StudyInstanceUID']
+        new_study_instance_uid = uid_mapping[study_instance_uid]
 
-    return dict(output)
+        if new_study_instance_uid not in output[new_patient_id]:
+            output[new_patient_id][new_study_instance_uid] = []
+
+        new_path_to_study = new_path / new_patient_id / new_study_instance_uid
+        new_path_to_study.mkdir(exist_ok=True)
+
+        current_mammogram_fn = Path(current_mammogram_fn)
+        new_path_to_current_mammogram_fn = new_path_to_study / current_mammogram_fn.name
+        if new_path_to_current_mammogram_fn in fns_added:
+            continue  # This is a duplicate
+        fns_added.append(new_path_to_current_mammogram_fn)
+
+        current_dictionary['image'] = str(new_path_to_current_mammogram_fn.relative_to(new_path))
+
+        # Link or copy data to its new place
+        try_copy_link(current_mammogram_fn, new_path_to_current_mammogram_fn, create_links)
+
+        # Check for label
+        path_to_possible_label = Path(str(current_mammogram_fn).replace('.dcm', '-label.nrrd'))
+
+        if path_to_possible_label.exists():
+            new_path_to_label = new_path_to_study / path_to_possible_label.name
+            try_copy_link(path_to_possible_label, new_path_to_label, create_links)
+            current_dictionary['label'] = str(new_path_to_label.relative_to(new_path))
+            try:
+                bbox = compute_bounding_box(new_path_to_label)
+                current_dictionary['bbox'] = bbox
+            except (IndexError, ValueError) as e:
+                logger.error(f"Fail bbox compute: {new_path_to_label}: {e}")
+
+        output[new_patient_id][new_study_instance_uid].append(current_dictionary)
+
+    return output
 
 
 def compute_bounding_box(label_fn):
     # TODO: Better building of cache names.
-    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)[0]  # TODO fix force_2d
+    label_arr = read_image(label_fn, force_2d=True, no_metadata=True)  # TODO fix force_2d
     bbox = bounding_box(label_arr)
 
     # Classes cannot be collated in the standard pytorch collate function.
@@ -308,13 +335,20 @@ def main():
     dicoms = find_dicoms(args.path)
     mammograms, patient_ids, failed_to_parse = find_mammograms(dicoms)
 
+    write_json(args.dest / 'mammograms.json', mammograms)
+
     with open('failed_to_parse.log', 'a') as f:
         for line in failed_to_parse:
             f.write(line + '\n')
 
-    patient_mapping = make_patient_mapping(patient_ids)
+    patient_mapping = make_patient_mapping(args.dest, patient_ids)
+    write_json(args.dest / 'patient_mapping.json', patient_mapping)
 
-    uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
+    studies_per_patient, uid_mapping = rewrite_structure(mammograms, patient_mapping, new_path=args.dest)
+
+    write_json(args.dest / 'studies_per_patient.json', studies_per_patient)
+    write_json(args.dest / 'uid_mapping.json', uid_mapping)
+
     logging.info('Writing new directory structure. This can take a while.')
     new_mammograms = create_temporary_file_structure(
         mammograms, patient_mapping, uid_mapping,
