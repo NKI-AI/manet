@@ -1,4 +1,6 @@
+from typing import Any
 from dataclasses import dataclass
+from omegaconf import MISSING
 
 
 @dataclass
@@ -22,6 +24,7 @@ class DefaultConfig:
     WEIGHT_DECAY: float = 1e-6  # 1e-3 originally.
     LR_STEP_SIZE: int = 20
     LR_GAMMA: float = 0.5
+    NETWORK: Any = MISSING
 
 
 @dataclass

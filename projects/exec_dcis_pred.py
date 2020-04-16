@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 
 
 from omegaconf import OmegaConf
-from config.base_config import DefaultConfig
+from config.base_config import DefaultConfig, UnetConfig
 from config.base_args import Args
 from manet.nn import build_model
 from manet.nn.common.tensor_ops import reduce_tensor_dict
@@ -280,8 +280,10 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
-    default_cfg = OmegaConf.structured(DefaultConfig)
-    cfg = OmegaConf.merge(default_cfg, OmegaConf.load(args.cfg))
+    cfg = OmegaConf.structured(DefaultConfig)
+    cfg.NETWORK = UnetConfig
+
+    cfg = OmegaConf.load(args.cfg)
 
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')
