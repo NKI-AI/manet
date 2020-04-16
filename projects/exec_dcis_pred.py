@@ -281,12 +281,11 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
     default_cfg = OmegaConf.structured(DefaultConfig)
+    cfg = OmegaConf.merge(default_cfg, OmegaConf.load(args.cfg))
 
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
-
-    OmegaConf.merge(default_cfg, OmegaConf.load(args.cfg))
 
 
     exp_path = args.experiment_directory / args.name
