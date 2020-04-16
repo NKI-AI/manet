@@ -280,10 +280,10 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
-    cfg = OmegaConf.structured(DefaultConfig)
-    cfg.NETWORK = UnetConfig
+    base_cfg = OmegaConf.structured(DefaultConfig)
+    base_cfg.NETWORK = UnetConfig()
 
-    cfg = OmegaConf.load(args.cfg)
+    cfg = OmegaConf.merge(base_cfg, OmegaConf.load(args.cfg))
 
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')

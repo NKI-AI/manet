@@ -34,7 +34,7 @@ class DefaultConfig:
 
 @dataclass
 class UnetConfig(ModelConfig):
-    AUG_LST: list
+    AUG_LST = []
     USE_CLASSIFIER: bool = False
 
 
