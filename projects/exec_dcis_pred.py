@@ -289,7 +289,6 @@ def main(args):
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
 
-
     exp_path = args.experiment_directory / args.name
     if args.local_rank == 0:
         print('Creating directories.')
@@ -379,7 +378,7 @@ def main(args):
                 training_sampler.set_epoch(epoch)
 
             train_loss, train_time = train_epoch(args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
-                                                 use_classifier=cfg.UNET.USE_CLASSIFIER)
+                                                 use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
             validate_metrics = evaluate(
                 args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
