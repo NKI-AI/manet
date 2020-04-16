@@ -281,7 +281,7 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
     base_cfg = OmegaConf.structured(DefaultConfig)
-    base_cfg.NETWORK = UnetConfig()
+    base_cfg = OmegaConf.merge(base_cfg, {'NETWORK': UnetConfig()})
 
     cfg = OmegaConf.merge(base_cfg, OmegaConf.load(args.cfg))
 
@@ -316,8 +316,8 @@ def main(args):
         multi_gpu.synchronize()
 
     logger.info('Building model.')
-    model = build_model(use_classifier=cfg.UNET.USE_CLASSIFIER,
-                        classifier_grad_scale=cfg.UNET.CLASSIFIER_GRADIENT_MULT).to(args.device)
+    model = build_model(use_classifier=cfg.NETWORK.USE_CLASSIFIER,
+                        classifier_grad_scale=cfg.NETWORK.CLASSIFIER_GRADIENT_MULT).to(args.device)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)
@@ -382,7 +382,7 @@ def main(args):
                                                  use_classifier=cfg.UNET.USE_CLASSIFIER)
 
             validate_metrics = evaluate(
-                args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.UNET.USE_CLASSIFIER)
+                args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
             if args.local_rank == 0:
                 save_model(exp_path, epoch, model, optimizer, lr_scheduler)
