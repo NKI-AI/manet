@@ -33,12 +33,13 @@ RUN conda install numpy pyyaml mkl mkl-include setuptools cmake cffi typing boos
 RUN conda install pytorch=1.4.0 cudatoolkit=10.1 torchvision -c pytorch
 RUN conda install scipy pandas cython matplotlib tqdm pillow scikit-learn scikit-image=0.14 -yq
 RUN pip install opencv-python h5py -q
-RUN pip install dominate visdom runstats -q
+RUN pip install runstats -q
 RUN pip install tb-nightly yacs -q
 RUN pip install --upgrade pip
 RUN pip install pydicom -q
-RUN pip install future packaging pytest coverage coveralls easydict tifffile demandimport simpleitk scikit-learn -q
+RUN pip install future packaging pytest coverage coveralls tifffile demandimport simpleitk scikit-learn -q
 RUN pip install git+https://github.com/AIIMLab/fexp@devel
+RUN pip install --upgrade --pre omegaconf #Omegaconf 2.0
 
 
 WORKDIR /tmp

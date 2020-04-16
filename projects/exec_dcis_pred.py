@@ -19,7 +19,9 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 # from apex import amp
 
-from config.base_config import cfg, cfg_from_file
+
+from omegaconf import OmegaConf
+from config.base_config import DefaultConfig
 from config.base_args import Args
 from manet.nn import build_model
 from manet.nn.common.tensor_ops import reduce_tensor_dict
@@ -278,10 +280,14 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
+    cfg = OmegaConf.structured(DefaultConfig)
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
-    cfg_from_file(args.cfg)
+
+    cfg = OmegaConf.load(args.cfg)
+    logger.info(cfg.pretty())
+
     exp_path = args.experiment_directory / args.name
     if args.local_rank == 0:
         print('Creating directories.')
@@ -337,7 +343,7 @@ def main(args):
     training_sampler, validation_sampler = build_samplers(
         training_set, validation_set, use_weights=False, is_distributed=is_distributed)
     training_loader, validation_loader = build_dataloader(
-        cfg.BATCH_SZ, training_set, training_sampler, validation_set, validation_sampler)
+        cfg.BATCH_SIZE, training_set, training_sampler, validation_set, validation_sampler)
 
     solver_steps = [_ * len(training_loader) for _ in
                     range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
