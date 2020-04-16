@@ -280,18 +280,18 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
-    cfg = OmegaConf.structured(DefaultConfig)
+    default_cfg = OmegaConf.structured(DefaultConfig)
+
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
 
-    cfg = OmegaConf.load(args.cfg)
-    logger.info(cfg.pretty())
+    OmegaConf.merge(default_cfg, OmegaConf.load(args.cfg))
+
 
     exp_path = args.experiment_directory / args.name
     if args.local_rank == 0:
         print('Creating directories.')
-        os.makedirs(cfg.INPUT_DIR, exist_ok=True)
         os.makedirs(exp_path, exist_ok=True)
         os.makedirs(exp_path / 'segmentations', exist_ok=True)
         writer = SummaryWriter(log_dir=exp_path / 'summary')
@@ -303,6 +303,7 @@ def main(args):
     setup(filename=exp_path / log_name, redirect_stderr=False, redirect_stdout=False,
           log_level=logging.INFO if not args.debug else logging.DEBUG)
     logger.info(vars(args))
+    logger.info(cfg.pretty())
 
     if cfg.MULTIGPU == 2:
         logger.info('Initializing process groups.')
