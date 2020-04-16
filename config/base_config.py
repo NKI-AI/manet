@@ -2,6 +2,11 @@ from typing import Any
 from dataclasses import dataclass
 from omegaconf import MISSING
 
+@dataclass
+class ModelConfig:
+    pass
+
+
 
 @dataclass
 class DefaultConfig:
@@ -24,11 +29,11 @@ class DefaultConfig:
     WEIGHT_DECAY: float = 1e-6  # 1e-3 originally.
     LR_STEP_SIZE: int = 20
     LR_GAMMA: float = 0.5
-    NETWORK: Any = MISSING
+    NETWORK: ModelConfig = MISSING
 
 
 @dataclass
-class UnetConfig:
+class UnetConfig(ModelConfig):
     AUG_LST: list
     USE_CLASSIFIER: bool = False
 
