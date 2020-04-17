@@ -56,13 +56,11 @@ def log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, over
     ground_truth_list = []
     heatmap_list = []
     overlay_list = []
-
-    for idx in range(functools.reduce(grid, mul)):
+    for idx in range(functools.reduce(mul, grid)):
         image_arr = images[idx].detach().cpu().numpy()[0, 0, ...]
         masks_arr = masks[idx].detach().cpu()[0, ...]
 
         plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
-
         if output_softmax is not None:
             output_arr = output_softmax[idx][0].detach().cpu().numpy()[0, 1, ...]
             plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
@@ -74,12 +72,10 @@ def log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, over
         heatmap_list.append(plot_heatmap)
         overlay_list.append(plot_overlay)
 
-    writer.add_image('validation/ground_truth',
-                     torchvision.utils.make_grid(ground_truth_list, nrow=grid[0]), epoch, dataformats='HWC')
-    writer.add_image('validation/heatmap',
-                     torchvision.utils.make_grid(heatmap_list, nrow=grid[0]), epoch, dataformats='HWC')
-    writer.add_image('validation/overlay',
-                     torchvision.utils.make_grid(overlay_list, nrow=grid[0]), epoch, dataformats='HWC')
+
+    writer.add_images('validation/ground_truth', ground_truth_list[0], epoch, dataformats='HWC')
+    writer.add_image('validation/heatmap', heatmap_list[0], epoch, dataformats='HWC')
+    writer.add_image('validation/overlay', overlay_list[0], epoch, dataformats='HWC')
 
 
 def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
@@ -199,6 +195,9 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
     stored_groundtruths = []
 
     with torch.no_grad():
+        log_images = []
+        log_masks = []
+        log_output = []
         for iter_idx, batch in enumerate(data_loader):
             images = batch['image'].to(args.device)
             masks = batch['mask'].to(args.device)
@@ -217,17 +216,18 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
                 [curr_gtr if aggregate else None for
                  curr_gtr, aggregate in zip(ground_truth, aggregate_outputs)])
 
-            log_images = []
-            log_masks = []
-            log_output = []
 
             if iter_idx < 2*2:
+                print(images.shape, 'shape')
                 log_images.append(images)
                 log_masks.append(masks)
                 log_output.append(output_softmax)
 
             if iter_idx == 2*2:
                 log_images_to_tensorboard(writer, epoch, log_images, log_masks, log_output, overlay_threshold=0.4)
+                del log_images
+                del log_masks
+                del log_output
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
