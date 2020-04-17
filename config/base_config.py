@@ -8,6 +8,12 @@ class ModelConfig:
 
 
 @dataclass
+class SolverConfig:
+    NAME: str = 'Adam'
+    STARTER_LR: float = 5e-4  # 1e-3 originally.
+
+
+@dataclass
 class DefaultConfig:
     DEBUG: bool = False
     BATCH_SIZE: int = 1
@@ -28,11 +34,12 @@ class DefaultConfig:
     WEIGHT_DECAY: float = 1e-6  # 1e-3 originally.
     LR_STEP_SIZE: int = 20
     LR_GAMMA: float = 0.5
+    SOLVER: SolverConfig = MISSING
     NETWORK: ModelConfig = MISSING
 
 
 @dataclass
 class UnetConfig(ModelConfig):
-    AUG_LST = []
+    AUGMENTATIONS = []
     USE_CLASSIFIER: bool = False
     CLASSIFIER_GRADIENT_MULT: float = 0.1
