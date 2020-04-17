@@ -19,7 +19,9 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 # from apex import amp
 
-from config.base_config import cfg, cfg_from_file
+
+from omegaconf import OmegaConf
+from config.base_config import DefaultConfig, UnetConfig, SolverConfig
 from config.base_args import Args
 from manet.nn import build_model
 from manet.nn.common.tensor_ops import reduce_tensor_dict
@@ -35,8 +37,9 @@ from manet.sys import multi_gpu
 from manet.utils import ensure_list
 from fexp.plotting import plot_2d
 
+from operator import mul
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score, f1_score
-
+import functools
 import torch.nn.functional as F
 
 from fexp.utils.io import read_list, read_json
@@ -48,29 +51,36 @@ np.random.seed(3145)
 random.seed(3145)
 torch.manual_seed(3145)
 
-
-def log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, overlay_threshold=0.4):
-    image_arr = images.detach().cpu().numpy()[0, 0, ...]
-    masks_arr = masks.detach().cpu()[0, ...]
-
-    plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
-    plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
-
-    writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
-    writer.add_image('validation/ground_truth', plot_gt, epoch, dataformats='HWC')
-
-    if output_softmax is not None:
-        output_arr = output_softmax[0].detach().cpu().numpy()[0, 1, ...]
-        plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
-        plot_overlay = torch.from_numpy(
-            np.array(plot_2d(
-                image_arr, mask=output_arr, overlay_threshold=overlay_threshold, overlay_alpha=0.5)))
-
-        writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
-        writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
+import torchvision.utils
 
 
-def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
+def log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, overlay_threshold=0.4, grid=(2, 2)):
+    ground_truth_list = []
+    heatmap_list = []
+    overlay_list = []
+    for idx in range(functools.reduce(mul, grid)):
+        image_arr = images[idx].detach().cpu().numpy()[0, 0, ...]
+        masks_arr = masks[idx].detach().cpu()[0, ...]
+
+        plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
+        if output_softmax is not None:
+            output_arr = output_softmax[idx][0].detach().cpu().numpy()[0, 1, ...]
+            plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
+            plot_overlay = torch.from_numpy(
+                np.array(plot_2d(
+                    image_arr, mask=output_arr, overlay_threshold=overlay_threshold, overlay_alpha=0.5)))
+
+        ground_truth_list.append(plot_gt)
+        heatmap_list.append(plot_heatmap)
+        overlay_list.append(plot_overlay)
+
+
+    writer.add_images('validation/ground_truth', ground_truth_list[0], epoch, dataformats='HWC')
+    writer.add_image('validation/heatmap', heatmap_list[0], epoch, dataformats='HWC')
+    writer.add_image('validation/overlay', overlay_list[0], epoch, dataformats='HWC')
+
+
+def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
     model.train()
     avg_loss = 0.
     avg_dice = 0.
@@ -92,7 +102,7 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
             ground_truth.append(batch['class'].to(args.device))
 
         # Log first batch to tensorboard
-        if iter_idx == 0 and epoch == 0:
+        if iter_idx == 0 and epoch == 0 and debug:
             logger.info(f'Logging first batch to Tensorboard.')
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
@@ -169,7 +179,8 @@ def train_epoch(args, epoch, model, data_loader, optimizer, lr_scheduler, writer
 
     return avg_loss, time.perf_counter() - start_epoch
 
-def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
+
+def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
     logger.info(f'Evaluation for epoch {epoch + 1}')
     model.eval()
 
@@ -187,6 +198,9 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
     stored_groundtruths = []
 
     with torch.no_grad():
+        log_images = []
+        log_masks = []
+        log_output = []
         for iter_idx, batch in enumerate(data_loader):
             images = batch['image'].to(args.device)
             masks = batch['mask'].to(args.device)
@@ -206,9 +220,18 @@ def evaluate(args, epoch, model, data_loader, writer, exp_path, return_losses=Fa
                 [curr_gtr if aggregate else None for
                  curr_gtr, aggregate in zip(ground_truth, aggregate_outputs)])
 
-            if iter_idx < 1:
-                # TODO: Multiple images, using a gridding function.
-                log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, overlay_threshold=0.4)
+
+            if iter_idx < 2*2:
+                print(images.shape, 'shape')
+                log_images.append(images)
+                log_masks.append(masks)
+                log_output.append(output_softmax)
+
+            if iter_idx == 2*2:
+                log_images_to_tensorboard(writer, epoch, log_images, log_masks, log_output, overlay_threshold=0.4)
+                del log_images
+                del log_masks
+                del log_output
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
 
@@ -282,14 +305,18 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
+    base_cfg = OmegaConf.structured(DefaultConfig)
+    base_cfg = OmegaConf.merge(base_cfg, {'NETWORK': UnetConfig(), 'SOLVER': SolverConfig()})
+
+    cfg = OmegaConf.merge(base_cfg, OmegaConf.load(args.cfg))
+
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
-    cfg_from_file(args.cfg)
+
     exp_path = args.experiment_directory / args.name
     if args.local_rank == 0:
         print('Creating directories.')
-        os.makedirs(cfg.INPUT_DIR, exist_ok=True)
         os.makedirs(exp_path, exist_ok=True)
         os.makedirs(exp_path / 'segmentations', exist_ok=True)
         writer = SummaryWriter(log_dir=exp_path / 'summary')
@@ -312,8 +339,8 @@ def main(args):
         multi_gpu.synchronize()
 
     logger.info('Building model.')
-    model = build_model(use_classifier=cfg.UNET.USE_CLASSIFIER,
-                        classifier_grad_scale=cfg.UNET.CLASSIFIER_GRADIENT_MULT).to(args.device)
+    model = build_model(use_classifier=cfg.NETWORK.USE_CLASSIFIER,
+                        classifier_grad_scale=cfg.NETWORK.CLASSIFIER_GRADIENT_MULT).to(args.device)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)
@@ -341,7 +368,7 @@ def main(args):
     training_sampler, validation_sampler = build_samplers(
         training_set, validation_set, use_weights=False, is_distributed=is_distributed)
     training_loader, validation_loader = build_dataloader(
-        cfg.BATCH_SZ, training_set, training_sampler, validation_set, validation_sampler)
+        cfg.BATCH_SIZE, training_set, training_sampler, validation_set, validation_sampler)
 
     solver_steps = [_ * len(training_loader) for _ in
                     range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
@@ -373,11 +400,11 @@ def main(args):
             if cfg.MULTIGPU == 2:
                 training_sampler.set_epoch(epoch)
 
-            train_loss, train_time = train_epoch(args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
-                                                 use_classifier=cfg.UNET.USE_CLASSIFIER)
+            train_loss, train_time = train_epoch(cfg, args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
+                                                 use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
             validate_metrics = evaluate(
-                args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.UNET.USE_CLASSIFIER)
+                cfg, args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
             if args.local_rank == 0:
                 save_model(exp_path, epoch, model, optimizer, lr_scheduler)
@@ -389,7 +416,7 @@ def main(args):
 
     # Test model if necessary
     if args.test:
-        validate_metrics = evaluate(args, epoch, model, validation_loader, writer, exp_path)
+        validate_metrics = evaluate(cfg, args, epoch, model, validation_loader, writer, exp_path)
     writer.close()
 
 

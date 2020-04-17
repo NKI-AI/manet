@@ -42,41 +42,41 @@ class MammoDataset(Dataset):
         self.validate_cache()  # Pass
 
         for idx, patient in enumerate(self.dataset_description):
-            data_cache = self.cache_dir / hashlib.sha224(str(patient).encode()).hexdigest()
-            if data_cache.exists() and self._cache_valid:
-                curr_data_cache = read_json(data_cache)
-                print(f'Pulling directory {patient} from cache.')
-                self.data.append(curr_data_cache)
-            else:
-                self.logger.debug(f'Parsing patient {patient} ({idx + 1}/{len(self.dataset_description)}).')
-                for study_id in self.dataset_description[patient]:
-                    for image_dict in self.dataset_description[patient][study_id]:
-                        curr_data_dict = {'case_path': patient,
-                                          'image_fn': image_dict['image'],
-                                          }
-                        if self.filter_negatives and 'label' in image_dict:
-                            label_fn = image_dict['label'] #because pathlib.path not json serializable
-                            curr_data_dict['label_fn'] = label_fn
+            #data_cache = self.cache_dir / hashlib.sha224(str(patient).encode()).hexdigest()
+            #if data_cache.exists() and self._cache_valid:
+            #    curr_data_cache = read_json(data_cache)
+            #    print(f'Pulling directory {patient} from cache.')
+            #    self.data.append(curr_data_cache)
+            #else:
+            self.logger.debug(f'Parsing patient {patient} ({idx + 1}/{len(self.dataset_description)}).')
+            for study_id in self.dataset_description[patient]:
+                for image_dict in self.dataset_description[patient][study_id]:
+                    curr_data_dict = {'case_path': patient,
+                                      'image_fn': image_dict['image'],
+                                      }
+                    if self.filter_negatives and 'label' in image_dict:
+                        label_fn = image_dict['label'] #because pathlib.path not json serializable
+                        curr_data_dict['label_fn'] = label_fn
 
-                            if 'bbox' not in image_dict:
-                                self.logger.info(f'Patient {patient} with study {study_id} has no bounding box, skipping.')
-                                continue
-                            if 'DCIS_grade' not in image_dict:
-                                self.logger.warning(f'Patient {patient} with study {study_id} '
-                                                    f'has no DCIS grade but has a label.')
-                                continue
-                            if self.class_mapping:
-                                class_label = self.class_mapping[image_dict['DCIS_grade']]
-                            else:
-                                class_label = image_dict['DCIS_grade']
-
-                            curr_data_dict['class'] = class_label
-                            curr_data_dict['bbox'] = image_dict['bbox']
-
-                            self.data.append(curr_data_dict)
-                            write_json(data_cache, curr_data_dict)
+                        if 'bbox' not in image_dict:
+                            self.logger.info(f'Patient {patient} with study {study_id} has no bounding box, skipping.')
+                            continue
+                        if 'DCIS_grade' not in image_dict:
+                            self.logger.warning(f'Patient {patient} with study {study_id} '
+                                                f'has no DCIS grade but has a label.')
+                            continue
+                        if self.class_mapping:
+                            class_label = self.class_mapping[image_dict['DCIS_grade']]
                         else:
-                            NotImplementedError()
+                            class_label = image_dict['DCIS_grade']
+
+                        curr_data_dict['class'] = class_label
+                        curr_data_dict['bbox'] = image_dict['bbox']
+
+                        self.data.append(curr_data_dict)
+                        #write_json(data_cache, curr_data_dict)
+                    else:
+                        NotImplementedError()
 
         self.logger.info(f'Loaded dataset of size {len(self.data)}.')
 
