@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Optional
 from dataclasses import dataclass
 from omegaconf import MISSING
 
@@ -7,10 +7,9 @@ class ModelConfig:
     pass
 
 
-
 @dataclass
 class DefaultConfig:
-    DEBUG: bool = False
+    DEBUG: Optional[bool] = None
     BATCH_SIZE: int = 1
     APEX: int = -1
     MULTIGPU: int = 0
@@ -37,4 +36,3 @@ class UnetConfig(ModelConfig):
     AUG_LST = []
     USE_CLASSIFIER: bool = False
     CLASSIFIER_GRADIENT_MULT: float = 0.1
-
