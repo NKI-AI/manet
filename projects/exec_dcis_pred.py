@@ -104,7 +104,7 @@ def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, w
             ground_truth.append(batch['class'].to(args.device))
 
         # Log first batch to tensorboard
-        if iter_idx == 0 and epoch == 0:
+        if iter_idx == 0 and epoch == 0 and debug:
             logger.info(f'Logging first batch to Tensorboard.')
             logger.info(f"Image filenames: {batch['image_fn']}")
             logger.info(f"Mask filenames: {batch['label_fn']}")
@@ -225,7 +225,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
                 log_images.append(images)
                 log_masks.append(masks)
                 log_output.append(output_softmax)
-                
+
             if iter_idx == 2*2:
                 log_images_to_tensorboard(writer, epoch, log_images, log_masks, log_output, overlay_threshold=0.4)
 
