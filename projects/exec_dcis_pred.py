@@ -37,8 +37,9 @@ from manet.sys import multi_gpu
 from manet.utils import ensure_list
 from fexp.plotting import plot_2d
 
+from operator import mul
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score, f1_score
-
+import functools
 import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
@@ -48,26 +49,37 @@ np.random.seed(3145)
 random.seed(3145)
 torch.manual_seed(3145)
 
+import torchvision.utils
 
-def log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, overlay_threshold=0.4):
-    image_arr = images.detach().cpu().numpy()[0, 0, ...]
-    masks_arr = masks.detach().cpu()[0, ...]
 
-    plot_image = torch.from_numpy(np.array(plot_2d(image_arr)))
-    plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
+def log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, overlay_threshold=0.4, grid=(2, 2)):
+    ground_truth_list = []
+    heatmap_list = []
+    overlay_list = []
 
-    writer.add_image('validation/image', plot_image, epoch, dataformats='HWC')
-    writer.add_image('validation/ground_truth', plot_gt, epoch, dataformats='HWC')
+    for idx in range(functools.reduce(grid, mul)):
+        image_arr = images[idx].detach().cpu().numpy()[0, 0, ...]
+        masks_arr = masks[idx].detach().cpu()[0, ...]
 
-    if output_softmax is not None:
-        output_arr = output_softmax[0].detach().cpu().numpy()[0, 1, ...]
-        plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
-        plot_overlay = torch.from_numpy(
-            np.array(plot_2d(
-                image_arr, mask=output_arr, overlay_threshold=overlay_threshold, overlay_alpha=0.5)))
+        plot_gt = torch.from_numpy(np.array(plot_2d(image_arr, mask=masks_arr)))
 
-        writer.add_image('validation/heatmap', plot_heatmap, epoch, dataformats='HWC')
-        writer.add_image('validation/overlay', plot_overlay, epoch, dataformats='HWC')
+        if output_softmax is not None:
+            output_arr = output_softmax[idx][0].detach().cpu().numpy()[0, 1, ...]
+            plot_heatmap = torch.from_numpy(np.array(plot_2d(output_arr)))
+            plot_overlay = torch.from_numpy(
+                np.array(plot_2d(
+                    image_arr, mask=output_arr, overlay_threshold=overlay_threshold, overlay_alpha=0.5)))
+
+        ground_truth_list.append(plot_gt)
+        heatmap_list.append(plot_heatmap)
+        overlay_list.append(plot_overlay)
+
+    writer.add_image('validation/ground_truth',
+                     torchvision.utils.make_grid(ground_truth_list, nrow=grid[0]), epoch, dataformats='HWC')
+    writer.add_image('validation/heatmap',
+                     torchvision.utils.make_grid(heatmap_list, nrow=grid[0]), epoch, dataformats='HWC')
+    writer.add_image('validation/overlay',
+                     torchvision.utils.make_grid(overlay_list, nrow=grid[0]), epoch, dataformats='HWC')
 
 
 def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, writer, use_classifier=False, debug=False):
@@ -205,9 +217,17 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
                 [curr_gtr if aggregate else None for
                  curr_gtr, aggregate in zip(ground_truth, aggregate_outputs)])
 
-            if iter_idx < 1:
-                # TODO: Multiple images, using a gridding function.
-                log_images_to_tensorboard(writer, epoch, images, masks, output_softmax, overlay_threshold=0.4)
+            log_images = []
+            log_masks = []
+            log_output = []
+
+            if iter_idx < 2*2:
+                log_images.append(images)
+                log_masks.append(masks)
+                log_output.append(output_softmax)
+                
+            if iter_idx == 2*2:
+                log_images_to_tensorboard(writer, epoch, log_images, log_masks, log_output, overlay_threshold=0.4)
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
