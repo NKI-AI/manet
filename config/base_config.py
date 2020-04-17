@@ -9,7 +9,7 @@ class ModelConfig:
 
 @dataclass
 class DefaultConfig:
-    DEBUG: Optional[bool] = None
+    DEBUG: bool = False
     BATCH_SIZE: int = 1
     APEX: int = -1
     MULTIGPU: int = 0
