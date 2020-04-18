@@ -35,7 +35,7 @@ class Args(argparse.ArgumentParser):
                           help='Path to an existing checkpoint. Used optionally along with "--resume"')
         self.add_argument('--name', help='Run name, if None use config name.', default=None, type=str)
 
-        self.add_argument('--fold', type=int, help='Fold number, will read training and validation set from /fold_idx')
+        self.add_argument('--fold', type=str, help='Fold number, will read training and validation set from /fold_idx')
         self.add_argument('--no-rsync', dest='no_rsync', help='use symbolic links instead', action='store_true')
         self.add_argument('--baseline', help='load baseline', action='store_true')
         self.add_argument('--train', help='train model', action='store_true')
