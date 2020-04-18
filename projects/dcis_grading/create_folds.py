@@ -30,13 +30,15 @@ def main():
     kf = KFold(args.num_folds)
     splits = kf.split(train)
     splits = [_ for _ in splits]
-
-    for (train_idxs, test_idxs), idx in enumerate(splits):
+    for idx, (train_idxs, test_idxs) in enumerate(splits):
         path_to_lists_folder = directory_path / f'fold_{idx}'
         path_to_lists_folder.mkdir(exist_ok=True)
         train_set = [train[idx] for idx in train_idxs]
-        write_list(directory_path / 'training_set.txt', train_set)
+        write_list(path_to_lists_folder / 'training_set.txt', train_set)
         validation_set = [train[idx] for idx in test_idxs]
-        write_list(directory_path / 'validation_set.txt', validation_set)
+        write_list(path_to_lists_folder / 'validation_set.txt', validation_set)
 
     print('Done.')
+
+if __name__ == '__main__':
+    main()
