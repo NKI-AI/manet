@@ -310,6 +310,9 @@ def main(args):
     print(f'Loading config file {args.cfg}')
 
     exp_path = args.experiment_directory / args.name
+    if args.fold:
+        exp_path = exp_path / f'fold_{args.fold}'
+
     if args.local_rank == 0:
         print('Creating directories.')
         os.makedirs(exp_path, exist_ok=True)
@@ -318,7 +321,7 @@ def main(args):
     else:
         time.sleep(1)
         writer = None
-    log_name = args.name + f'_{args.local_rank}.log'
+    log_name = f'log_{args.local_rank}.log'
     print(f'Logging into {exp_path / log_name}')
     setup(filename=exp_path / log_name, redirect_stderr=False, redirect_stdout=False,
           log_level=logging.INFO if not args.debug else logging.DEBUG)
@@ -354,7 +357,7 @@ def main(args):
 
     # Create dataset and initializer LR scheduler
     logger.info('Creating datasets.')
-    training_description, validation_description = build_datasets(args.data_source)
+    training_description, validation_description = build_datasets(args.data_source, args.fold)
     training_transforms, validation_transforms = build_transforms()
 
     training_set = MammoDataset(training_description, args.data_source, transform=training_transforms)

@@ -105,10 +105,15 @@ class MammoDataset(Dataset):
         return len(self.data)
 
 
-def build_datasets(data_source):
+def build_datasets(data_source, fold=None):
     # Assume the description file, a training set and a validation set are linked in the main directory.
-    train_list = read_list(data_source / 'training_set.txt')
-    validation_list = read_list(data_source / 'validation_set.txt')
+    if fold:
+        train_list = read_list(data_source / 'training_set.txt')
+        validation_list = read_list(data_source / 'validation_set.txt')
+    else:
+        train_list = read_list(data_source / f'fold_{fold}' / 'training_set.txt')
+        validation_list = read_list(data_source / f'fold_{fold}' / 'validation_set.txt')
+
     mammography_description = read_json(data_source / 'dataset_description.json')
 
     training_description = {k: v for k, v in mammography_description.items() if k in train_list}
