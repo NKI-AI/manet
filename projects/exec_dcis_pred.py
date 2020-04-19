@@ -234,9 +234,8 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
                 del log_output
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
-
-            #losses.append(batch_losses.sum().item())
-            losses.append(sum(batch_losses))
+            losses.append(batch_losses.sum().item())
+            #losses.append(sum(batch_losses))
 
             batch_dice = dice_fn((output_softmax[0])[:, 1, ...], masks)
             dices.append(batch_dice.item())
