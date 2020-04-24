@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig host="messi.umcn.nl" id="380c5b29-b959-401e-a4e5-d9681f85ad26" keyPath="$USER_HOME$/.ssh/id_rsa" port="22" customName="messi.umcn.nl" nameFormat="CUSTOM" />
+    </configs>
+  </component>
+</project>

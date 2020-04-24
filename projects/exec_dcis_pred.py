@@ -36,6 +36,7 @@ from manet.sys.logging import setup
 from manet.sys import multi_gpu
 from manet.utils import ensure_list
 from fexp.plotting import plot_2d
+from fexp.utils.io import write_list
 
 from operator import mul
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score, f1_score
@@ -177,8 +178,7 @@ def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, w
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
-    logger.info(f'Evaluation for epoch {epoch + 1}')
+def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, use_classifier=False):
     model.eval()
 
     losses = []
@@ -193,6 +193,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
 
     stored_outputs = []
     stored_groundtruths = []
+    stored_filenames = []
 
     with torch.no_grad():
         log_images = []
@@ -201,6 +202,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
         for iter_idx, batch in enumerate(data_loader):
             images = batch['image'].to(args.device)
             masks = batch['mask'].to(args.device)
+            filename = batch['image_fn']
 
             ground_truth = [masks]
             if use_classifier:
@@ -215,19 +217,20 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
             stored_groundtruths.append(
                 [curr_gtr if aggregate else None for
                  curr_gtr, aggregate in zip(ground_truth, aggregate_outputs)])
+            stored_filenames.append(filename)
 
+            if writer:
+                if iter_idx < 2*2:
+                    print(images.shape, 'shape')
+                    log_images.append(images)
+                    log_masks.append(masks)
+                    log_output.append(output_softmax)
 
-            if iter_idx < 2*2:
-                print(images.shape, 'shape')
-                log_images.append(images)
-                log_masks.append(masks)
-                log_output.append(output_softmax)
-
-            if iter_idx == 2*2:
-                log_images_to_tensorboard(writer, epoch, log_images, log_masks, log_output, overlay_threshold=0.4)
-                del log_images
-                del log_masks
-                del log_output
+                if iter_idx == 2*2:
+                    log_images_to_tensorboard(writer, epoch, log_images, log_masks, log_output, overlay_threshold=0.5)
+                    del log_images
+                    del log_masks
+                    del log_output
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
@@ -242,11 +245,16 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
     }
 
     # Compute metrics for stored output:
+    output_result = []
     if use_classifier:
         grab_idx = 1
 
         outputs = torch.stack([_[grab_idx] for _ in stored_outputs]).cpu().numpy()[:, 0, 1].astype(np.float) # ?
+
         gtrs = torch.stack([_[grab_idx] for _ in stored_groundtruths]).cpu().numpy()[:, 0].astype(np.float)
+
+        output_result = (stored_filenames, outputs, gtrs)
+
         auc = roc_auc_score(gtrs, outputs)
         # balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
         #f1_score_val = f1_score(gtrs, outputs)
@@ -258,13 +266,13 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
     if cfg.MULTIGPU == 2:
         torch.cuda.synchronize()
         reduce_tensor_dict(metric_dict)
-    if args.local_rank == 0:
+    if args.local_rank == 0 and writer:
         for key in metric_dict:
             writer.add_scalar(key, metric_dict[key].item(), epoch)
 
     metric_string = f''
     for k, v in metric_dict.items():
-        metric_string += f'{k} = {v:.4g}'
+        metric_string += f'{k} = {v:.4g} '
 
     logger.info(
         f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] '
@@ -274,7 +282,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
 
     torch.cuda.empty_cache()
 
-    return metric_dict
+    return metric_dict, output_result
 
 
 def build_dataloader(batch_size, training_set, training_sampler, validation_set=None, validation_sampler=None):
@@ -402,7 +410,7 @@ def main(args):
 
             train_loss, train_time = train_epoch(cfg, args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
                                                  use_classifier=cfg.NETWORK.USE_CLASSIFIER)
-
+            logger.info(f'Evaluation for epoch {epoch + 1}')
             validate_metrics = evaluate(
                 cfg, args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
@@ -414,11 +422,20 @@ def main(args):
             #     logger.info('Updating samplers for hard mining.')
             #     train_loader, train_sampler = update_train_sampler(args, epoch, model, cfg, train_set, writer, exp_path)
 
+    writer.close()
     # Test model if necessary
     if args.test:
-        validate_metrics = evaluate(cfg, args, epoch, model, validation_loader, writer, exp_path)
-    writer.close()
+        logger.info('Validating....')
+        validate_metrics, output = evaluate(
+            cfg, args, epoch, model, validation_loader, None, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
+        filenames, outputs, gtrs = output
+        output_csv = ['filename;output_probability;gtr']
+        for filename, output_val, gtr in zip(filenames, outputs.tolist(), gtrs.tolist()):
+            csv_str = f'{filename[0]};{output_val};{gtr}'
+            output_csv.append(csv_str)
+
+        write_list(exp_path / 'validation_results.csv', output_csv)
 
 if __name__ == '__main__':
     args = Args().parse_args()
