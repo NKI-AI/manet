@@ -36,6 +36,7 @@ from manet.sys.logging import setup
 from manet.sys import multi_gpu
 from manet.utils import ensure_list
 from fexp.plotting import plot_2d
+from tools.optimization import parameters
 
 from operator import mul
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score, f1_score
@@ -235,6 +236,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
+
             #losses.append(sum(batch_losses))
 
             batch_dice = dice_fn((output_softmax[0])[:, 1, ...], masks)
@@ -264,7 +266,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
         reduce_tensor_dict(metric_dict)
     if args.local_rank == 0:
         for key in metric_dict:
-            writer.add_scalar(key, metric_dict[key].item(), epoch)
+            writer.add_scalar(key, metric_dict[key].item(), epoch+1)
 
     metric_string = f''
     for k, v in metric_dict.items():
@@ -306,14 +308,19 @@ def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
     base_cfg = OmegaConf.structured(DefaultConfig)
     base_cfg = OmegaConf.merge(base_cfg, {'NETWORK': UnetConfig(), 'SOLVER': SolverConfig()})
+    params = parameters()
 
-    cfg = OmegaConf.merge(base_cfg, OmegaConf.load(args.cfg))
+    #cfg = OmegaConf.merge(base_cfg, OmegaConf.load(args.cfg))
+    cfg = OmegaConf.merge(params, OmegaConf.load(args.cfg))
 
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')
     print(f'Loading config file {args.cfg}')
 
     exp_path = args.experiment_directory / args.name
+    if args.fold:
+        exp_path = exp_path / f'fold_{args.fold}'
+
     if args.local_rank == 0:
         print('Creating directories.')
         os.makedirs(exp_path, exist_ok=True)
@@ -322,11 +329,12 @@ def main(args):
     else:
         time.sleep(1)
         writer = None
-    log_name = args.name + f'_{args.local_rank}.log'
+    log_name = f'log_{args.local_rank}.log'
     print(f'Logging into {exp_path / log_name}')
     setup(filename=exp_path / log_name, redirect_stderr=False, redirect_stdout=False,
           log_level=logging.INFO if not args.debug else logging.DEBUG)
     logger.info(vars(args))
+    logger.info(cfg.pretty())
 
     if cfg.MULTIGPU == 2:
         logger.info('Initializing process groups.')
@@ -357,7 +365,7 @@ def main(args):
 
     # Create dataset and initializer LR scheduler
     logger.info('Creating datasets.')
-    training_description, validation_description = build_datasets(args.data_source)
+    training_description, validation_description = build_datasets(args.data_source, args.fold)
     training_transforms, validation_transforms = build_transforms()
 
     training_set = MammoDataset(training_description, args.data_source, transform=training_transforms, cache_dir='/var/tmp/train')
@@ -378,7 +386,7 @@ def main(args):
     # TODO: Amp requires loading the state dict
     start_epoch = load_model(exp_path, model, optimizer, lr_scheduler, args.resume, checkpoint_fn=args.checkpoint)
     epoch = start_epoch
-    logger.info(f'Starting at epoch {epoch}.')
+    logger.info(f'Starting at epoch {epoch + 1}.')
 
     # Parallelize model
     if cfg.MULTIGPU == 2:
@@ -401,7 +409,7 @@ def main(args):
 
             train_loss, train_time = train_epoch(cfg, args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
                                                  use_classifier=cfg.NETWORK.USE_CLASSIFIER)
-
+            logger.info(f'Evaluation for epoch {epoch + 1}')
             validate_metrics = evaluate(
                 cfg, args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
@@ -415,9 +423,17 @@ def main(args):
 
     # Test model if necessary
     if args.test:
-        validate_metrics = evaluate(cfg, args, epoch, model, validation_loader, writer, exp_path)
-    writer.close()
+        logger.info('Validating....')
+        validate_metrics, output = evaluate(
+            cfg, args, epoch, model, validation_loader, None, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
 
+        filenames, outputs, gtrs = output
+        output_csv = ['filename;output_probability;gtr']
+        for filename, output_val, gtr in zip(filenames, outputs.tolist(), gtrs.tolist()):
+            csv_str = f'{filename[0]};{output_val};{gtr}'
+            output_csv.append(csv_str)
+
+        write_list(exp_path / 'validation_results.csv', output_csv)
 
 if __name__ == '__main__':
     args = Args().parse_args()

@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 def build_model(use_classifier=False, classifier_grad_scale=0.25):
     num_channels = 1
-    num_base_filters = 64
+    num_base_filters = 32
     output_shape = (1024, 1024)
-    depth = 4
+    depth = 7
 
     # TODO: Create config for these variables
     if use_classifier:
