@@ -42,7 +42,7 @@ def save_model(exp_dir, epoch, model, optimizer, lr_scheduler, name='model'):
         'exp_dir': exp_dir
     }
 
-    torch.save(save_dict, f=exp_dir / f'{name}_{epoch}.pt')
+    torch.save(save_dict, f=exp_dir / f'{name}_{epoch + 1}.pt')
 
     with open(exp_dir / 'last_model.txt', 'w') as f:
         f.write(str(epoch))
