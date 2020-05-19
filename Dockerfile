@@ -45,7 +45,7 @@ RUN pip install --upgrade --pre omegaconf #Omegaconf 2.0
 WORKDIR /tmp
 RUN git clone https://github.com/NVIDIA/apex
 WORKDIR apex
-RUN pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" . | exit 0
+# RUN pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" . | exit 0
 
 # Create directories for input and output
 RUN mkdir /manet && chmod 777 /manet

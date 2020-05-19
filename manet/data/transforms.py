@@ -7,7 +7,7 @@ LICENSE file in the root directory of this source tree.
 import torch
 import numpy as np
 from fexp.utils.bbox import crop_to_bbox, BoundingBox
-from fexp.transforms import Compose, RandomTransform
+from fexp.transform import Compose, RandomTransform
 
 import warnings
 warnings.filterwarnings("ignore")
