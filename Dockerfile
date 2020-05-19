@@ -1,4 +1,4 @@
-FROM nvidia/cuda:10.1-cudnn7-devel
+FROM nvidia/cuda:10.2-cudnn7-devel
 
 ENV CUDA_PATH /usr/local/cuda
 ENV CUDA_ROOT /usr/local/cuda/bin
@@ -30,7 +30,7 @@ ENV PATH "$CUDA_ROOT:/root/miniconda3/bin:$PATH"
 
 RUN conda install python=3.7
 RUN conda install numpy pyyaml mkl mkl-include setuptools cmake cffi typing boost
-RUN conda install pytorch=1.4.0 cudatoolkit=10.1 torchvision -c pytorch
+RUN conda install pytorch=1.5.0 cudatoolkit=10.2 torchvision -c pytorch
 RUN conda install scipy pandas cython matplotlib tqdm pillow scikit-learn scikit-image=0.14 -yq
 RUN pip install opencv-python h5py -q
 RUN pip install runstats -q
@@ -39,7 +39,7 @@ RUN pip install --upgrade pip
 RUN pip install pydicom -q
 RUN pip install future packaging pytest coverage coveralls tifffile demandimport simpleitk scikit-learn -q
 RUN pip install git+https://github.com/AIIMLab/fexp@devel
-RUN pip install --upgrade --pre omegaconf #Omegaconf 2.0
+RUN pip install --upgrade --pre omegaconf
 
 
 WORKDIR /tmp
