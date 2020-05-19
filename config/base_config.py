@@ -43,4 +43,4 @@ class UnetConfig(ModelConfig):
     AUGMENTATIONS = []
     USE_CLASSIFIER: bool = False
     CLASSIFIER_GRADIENT_MULT: float = 0.1
-    LOSS_NAME: int = 'basic'
+    LOSS_NAME: str = 'basic'
