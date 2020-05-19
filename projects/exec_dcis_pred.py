@@ -185,7 +185,8 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, use_classif
     losses = []
     dices = []
     start = time.perf_counter()
-    loss_fn = build_losses(use_classifier)
+    loss_fn = build_losses(
+        use_classifier, loss_name=cfg.NETWORK.LOSS_NAME, top_k=cfg.NETWORK.loss_top_k, gamma=cfg.NETWORK.loss_gamma)
     dice_fn = HardDice(cls=1, binary_cls=True)
 
     aggregate_outputs = [False]
