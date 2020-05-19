@@ -44,3 +44,5 @@ class UnetConfig(ModelConfig):
     USE_CLASSIFIER: bool = False
     CLASSIFIER_GRADIENT_MULT: float = 0.1
     LOSS_NAME: str = 'basic'
+    loss_top_k: float = 0.05
+    loss_gamma: float = 2.

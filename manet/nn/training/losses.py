@@ -10,7 +10,7 @@ import numpy as np
 import torch.nn.functional as F
 
 
-def build_losses(use_classifier=False, multipliers=(1.0, 0.5), top_k=(None, None), loss_name='basic'):
+def build_losses(use_classifier=False, multipliers=(1.0, 0.5), loss_name='basic', **kwargs):
     multipliers = [torch.tensor(_) for _ in multipliers]
 
     if loss_name == 'basic':
@@ -20,10 +20,11 @@ def build_losses(use_classifier=False, multipliers=(1.0, 0.5), top_k=(None, None
             loss_fns.append(lambda x, y: multipliers[1].to(x.device) * torch.nn.CrossEntropyLoss(weight=None, reduction='mean')(x, y))
 
     elif loss_name == 'topk':
-        loss_fns = [lambda x, y: multipliers[0].to(x.device) * CrossEntropyTopK(top_k=0.05)(x, y)]
+        loss_fns = [lambda x, y: multipliers[0].to(x.device) * CrossEntropyTopK(top_k=kwargs.get('top_k', 0.05))(x, y)]
 
         if use_classifier:
-            loss_fns.append(lambda x, y: multipliers[1].to(x.device) * FocalLoss(reduction='mean')(x, y))
+            loss_fns.append(
+                lambda x, y: multipliers[1].to(x.device) * FocalLoss(gamma=kwargs.get('gamma', 2.), reduction='mean')(x, y))
 
     return loss_fns
 
@@ -48,7 +49,6 @@ class CrossEntropyTopK(nn.Module):
 
 
 class FocalLoss(nn.Module):
-
     def __init__(self, weight=None,
                  gamma=2., reduction='none'):
         nn.Module.__init__(self)

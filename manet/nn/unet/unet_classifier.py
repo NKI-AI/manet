@@ -15,7 +15,6 @@ from manet.nn.unet.unet_fastmri_facebook import ConvBlock
 from manet.nn.layers import grad_multiplier
 
 
-
 class UnetModel2dClassifier(nn.Module):
     """
     PyTorch implementation of a U-Net model with a classifier attached at the bottleneck.
