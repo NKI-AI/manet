@@ -114,7 +114,7 @@ class UnetModel2dClassifier(nn.Module):
             output = F.max_pool2d(output, kernel_size=2)
 
         output = self.conv(output)
-        classifier_output = self.classifier.apply(stack[-1])
+        classifier_output = self.classifier(stack[-1])
 
         # Apply up-sampling layers
         for layer in self.up_sample_layers:
@@ -146,4 +146,3 @@ class Classifier(nn.Module):
         x = self.out_conv(x)[..., 0, 0]
 
         return x
-    
