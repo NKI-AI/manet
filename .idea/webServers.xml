@@ -3,11 +3,10 @@
   <component name="WebServers">
     <option name="servers">
       <webServer id="f14ccf1b-38de-4ff2-8a9d-c80fa44c414a" name="messi.umcn.nl" url="http://messi.umcn.nl">
-        <fileTransfer host="messi.umcn.nl" port="22" privateKey="$USER_HOME$/.ssh/id_rsa" rootFolder="/home/jonas" accessType="SFTP" keyPair="true">
+        <fileTransfer rootFolder="/home/jonas" accessType="SFTP" sshConfigId="b639a6b5-6c72-429f-b7f5-e706035ac1d5" sshConfig="messi.umcn.nl">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>
-          <option name="port" value="22" />
         </fileTransfer>
       </webServer>
     </option>

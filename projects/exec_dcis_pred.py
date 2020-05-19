@@ -85,7 +85,7 @@ def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, w
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = build_losses(use_classifier)
+    loss_fn = build_losses(use_classifier, loss_name=cfg.NETWORK.LOSS_NAME)
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
