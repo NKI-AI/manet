@@ -114,7 +114,7 @@ class UnetModel2dClassifier(nn.Module):
             output = F.max_pool2d(output, kernel_size=2)
 
         output = self.conv(output)
-        classifier_output = self.classifier(stack[-1])
+        classifier_output = self.classifier.apply(stack[-1])
 
         # Apply up-sampling layers
         for layer in self.up_sample_layers:
@@ -138,6 +138,7 @@ class Classifier(nn.Module):
         self.conv_block = ConvBlock(in_channels, in_channels, dropout_prob=dropout_prob)
         self.out_conv = nn.Conv2d(in_channels, num_domains, 1)
 
+    @staticmethod
     def forward(self, x):
         x = self.extra_conv(x)
         x = self.conv_block(GradMultiplication(self.grad_scale)(x))
