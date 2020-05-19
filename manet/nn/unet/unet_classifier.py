@@ -129,7 +129,6 @@ class UnetModel2dClassifier(nn.Module):
 
 
 class Classifier(nn.Module):
-    # TODO: solve legacy autograd warning
     def __init__(self, in_channels, num_domains=1, dropout_prob=0.1, grad_scale=0.5):
         super().__init__()
 
@@ -138,7 +137,6 @@ class Classifier(nn.Module):
         self.conv_block = ConvBlock(in_channels, in_channels, dropout_prob=dropout_prob)
         self.out_conv = nn.Conv2d(in_channels, num_domains, 1)
 
-    @staticmethod
     def forward(self, x):
         x = self.extra_conv(x)
         x = self.conv_block(grad_multiplier(x, self.grad_scale))
