@@ -46,3 +46,6 @@ class UnetConfig(ModelConfig):
     LOSS_NAME: str = 'basic'
     loss_top_k: float = 0.05
     loss_gamma: float = 2.
+    num_base_filters: int = 64
+    depth: int = 4
+    dropout_probability: float = 0.1
