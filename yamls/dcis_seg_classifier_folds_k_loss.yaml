@@ -3,14 +3,14 @@ MULTIGPU: 0
 APEX: -1
 N_EPOCHS: 600
 BATCH_SIZE: 1
-STARTER_LR: 0.00025
+learning_rate: 0.00025
 LR_STEP_SIZE: 150
-NETWORK:
- USE_CLASSIFIER: true
- LOSS_NAME: topk
- CLASSIFIER_GRADIENT_MULT: 0.15
+network:
+ use_classifier: true
+ loss_name: topk
+ classifier_gradient_multiplier: 0.15
  loss_top_k: 0.05
  loss_gamma: 2.
-OPTIMIZER: 'Adam'
-WEIGHT_DECAY: 0.0001
+optimizer: 'Adam'
+weight_decay: 0.0001
 HARD_MINING_FREQ: 1

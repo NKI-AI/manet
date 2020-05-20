@@ -86,7 +86,7 @@ def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, w
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
     loss_fn = build_losses(
-        use_classifier, loss_name=cfg.NETWORK.LOSS_NAME, top_k=cfg.NETWORK.loss_top_k, gamma=cfg.NETWORK.loss_gamma)
+        use_classifier, loss_name=cfg.network.loss_name, top_k=cfg.network.loss_top_k, gamma=cfg.network.loss_gamma)
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
@@ -186,7 +186,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, use_classif
     dices = []
     start = time.perf_counter()
     loss_fn = build_losses(
-        use_classifier, loss_name=cfg.NETWORK.LOSS_NAME, top_k=cfg.NETWORK.loss_top_k, gamma=cfg.NETWORK.loss_gamma)
+        use_classifier, loss_name=cfg.network.loss_name, top_k=cfg.network.loss_top_k, gamma=cfg.network.loss_gamma)
     dice_fn = HardDice(cls=1, binary_cls=True)
 
     aggregate_outputs = [False]
@@ -223,7 +223,6 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, use_classif
 
             if writer:
                 if iter_idx < 2*2:
-                    print(images.shape, 'shape')
                     log_images.append(images)
                     log_masks.append(masks)
                     log_output.append(output_softmax)
@@ -311,7 +310,7 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
     base_cfg = OmegaConf.structured(DefaultConfig)
-    base_cfg = OmegaConf.merge(base_cfg, {'NETWORK': UnetConfig(), 'SOLVER': SolverConfig()})
+    base_cfg = OmegaConf.merge(base_cfg, {'network': UnetConfig(), 'SOLVER': SolverConfig()})
 
     cfg = OmegaConf.merge(base_cfg, OmegaConf.load(args.cfg))
 
@@ -349,8 +348,8 @@ def main(args):
 
     logger.info('Building model.')
     model = build_model(
-        use_classifier=cfg.NETWORK.USE_CLASSIFIER, num_base_filters=cfg.NETWORK.num_base_filters,
-        depth=cfg.NETWORK.depth, classifier_grad_scale=cfg.NETWORK.CLASSIFIER_GRADIENT_MULT).to(args.device)
+        use_classifier=cfg.network.use_classifier, num_base_filters=cfg.network.num_base_filters,
+        depth=cfg.network.depth, classifier_grad_scale=cfg.network.classifier_gradient_multiplier).to(args.device)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)
@@ -412,10 +411,10 @@ def main(args):
                 training_sampler.set_epoch(epoch)
 
             train_loss, train_time = train_epoch(cfg, args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
-                                                 use_classifier=cfg.NETWORK.USE_CLASSIFIER)
+                                                 use_classifier=cfg.network.use_classifier)
             logger.info(f'Evaluation for epoch {epoch + 1}')
             validate_metrics = evaluate(
-                cfg, args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
+                cfg, args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.network.use_classifier)
 
             if args.local_rank == 0:
                 save_model(exp_path, epoch, model, optimizer, lr_scheduler)
@@ -430,7 +429,7 @@ def main(args):
     if args.test:
         logger.info('Validating....')
         validate_metrics, output = evaluate(
-            cfg, args, epoch, model, validation_loader, None, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
+            cfg, args, epoch, model, validation_loader, None, exp_path, use_classifier=cfg.network.use_classifier)
 
         filenames, outputs, gtrs = output
         output_csv = ['filename;output_probability;gtr']
