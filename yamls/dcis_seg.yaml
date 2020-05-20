@@ -1,8 +1,8 @@
 DEBUG: true
 MULTIGPU: 0
 APEX: -1
-N_EPOCHS: 500
-BATCH_SIZE: 1
+num_epochs: 500
+batch_size: 1
 learning_rate: 0.0025
 network:
  use_classifier: false

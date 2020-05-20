@@ -168,7 +168,7 @@ def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, w
             for loss_idx, loss in enumerate(losses):
                 loss_str += f'Loss_{loss_idx} = {loss.item():.4f} '
             logger.info(
-                f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
+                f'Ep = [{epoch + 1:3d}/{cfg.num_epochs:3d}] '
                 f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
                 f'{loss_str}'
                 f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
@@ -276,7 +276,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, use_classif
         metric_string += f'{k} = {v:.4g} '
 
     logger.info(
-        f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] '
+        f'Epoch = [{epoch + 1:4d}/{cfg.num_epochs:4d}] '
         f'{metric_string} '
         f'DevTime = {time.perf_counter() - start:.4f}s'
     )
@@ -377,10 +377,10 @@ def main(args):
     training_sampler, validation_sampler = build_samplers(
         training_set, validation_set, use_weights=False, is_distributed=is_distributed)
     training_loader, validation_loader = build_dataloader(
-        cfg.BATCH_SIZE, training_set, training_sampler, validation_set, validation_sampler)
+        cfg.batch_size, training_set, training_sampler, validation_set, validation_sampler)
 
     solver_steps = [_ * len(training_loader) for _ in
-                    range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
+                    range(cfg.lr_step_size, cfg.num_epochs, cfg.lr_step_size)]
     lr_scheduler = WarmupMultiStepLR(optimizer, solver_steps, cfg.LR_GAMMA, warmup_factor=1 / 10.,
                                      warmup_iters=int(0.5 * len(training_loader)), warmup_method='linear')
 
@@ -406,7 +406,7 @@ def main(args):
 
     # Train model if necessary
     if args.train:
-        for epoch in range(start_epoch, cfg.N_EPOCHS):
+        for epoch in range(start_epoch, cfg.num_epochs):
             if cfg.MULTIGPU == 2:
                 training_sampler.set_epoch(epoch)
 

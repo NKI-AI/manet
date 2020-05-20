@@ -16,7 +16,7 @@ class SolverConfig:
 @dataclass
 class DefaultConfig:
     DEBUG: bool = False
-    BATCH_SIZE: int = 1
+    batch_size: int = 1
     APEX: int = -1
     MULTIGPU: int = 0
     # DELAY_REDUCE: bool = False
@@ -28,11 +28,11 @@ class DefaultConfig:
     REPORT_INTERVAL: int = 1
     GRAD_STEPS: int = 1
     GRAD_CLIP: float = 0
-    N_EPOCHS: int = 50
+    num_epochs: int = 50
     optimizer: str = 'Adam'
     learning_rate: float = 5e-4  # 1e-3 originally.
     weight_decay: float = 1e-6  # 1e-3 originally.
-    LR_STEP_SIZE: int = 20
+    lr_step_size: int = 20
     LR_GAMMA: float = 0.5
     SOLVER: SolverConfig = MISSING
     network: ModelConfig = MISSING
