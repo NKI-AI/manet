@@ -84,8 +84,8 @@ class UnetModel2dClassifier(nn.Module):
             nn.Conv2d(ch // 2, num_segmentation_classes, kernel_size=1),
             nn.Conv2d(num_segmentation_classes, num_segmentation_classes, kernel_size=1),
         )
-
         self.classifier = Classifier(
+            num_filters * (2 ** (depth - 1)),
             (depth - 2) * 2,
             num_domains=num_classifier_classes,
             dropout_prob=dropout_prob,
@@ -128,10 +128,10 @@ class UnetModel2dClassifier(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, in_channels, num_domains=1, dropout_prob=0.1, grad_scale=0.5):
+    def __init__(self, x_channels, in_channels, num_domains=1, dropout_prob=0.1, grad_scale=0.5):
         super().__init__()
 
-        self.extra_conv = nn.Conv2d(512, in_channels, kernel_size=3, padding=1)
+        self.extra_conv = nn.Conv2d(x_channels, in_channels, kernel_size=3, padding=1)
         self.grad_scale = grad_scale
         self.conv_block = ConvBlock(in_channels, in_channels, dropout_prob=dropout_prob)
         self.out_conv = nn.Conv2d(in_channels, num_domains, 1)
