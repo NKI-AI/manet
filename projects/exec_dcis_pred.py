@@ -349,7 +349,7 @@ def main(args):
     logger.info('Building model.')
     model = build_model(
         use_classifier=cfg.network.use_classifier, num_base_filters=cfg.network.num_base_filters,
-        depth=cfg.network.depth, classifier_grad_scale=cfg.network.classifier_gradient_multiplier).to(args.device)
+        depth=cfg.network.depth, output_shape=cfg.patch_size, classifier_grad_scale=cfg.network.classifier_gradient_multiplier).to(args.device)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)
