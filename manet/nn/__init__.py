@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_model(use_classifier=False, num_base_filters=64, depth=4,
-                dropout_probability=0.1, output_shape = (1024, 1024), classifier_grad_scale=0.25):
+                dropout_probability=0.1, output_shape=(1024, 1024), classifier_grad_scale=0.25):
     num_channels = 1
 
     # TODO: Create config for these variables
