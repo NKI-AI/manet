@@ -159,11 +159,12 @@ class RandomLUT:
         return sample
 
 
-def build_transforms(random_shift=(150, 150), gaussian_noise_percentage=0.025, gamma_range=(0.95, 1.05)):
+def build_transforms(random_shift=(150, 150), gaussian_noise_percentage=0.025,
+                     gamma_range=(0.95, 1.05), patch_size=(1024, 1024)):
     training_transforms = Compose([
         RandomLUT(),
         RandomShiftBbox(random_shift),
-        CropAroundBbox((1, 1024, 1024)),
+        CropAroundBbox((1,) + patch_size),
         RandomFlipTransform(0.5),
         RandomTransform([
             RandomGammaTransform(gamma_range),
@@ -174,7 +175,7 @@ def build_transforms(random_shift=(150, 150), gaussian_noise_percentage=0.025, g
 
     validation_transforms = Compose([
         RandomLUT(),
-        CropAroundBbox((1, 1024, 1024)),
+        CropAroundBbox((1,) + patch_size),
         ToTensor(),
     ])
 

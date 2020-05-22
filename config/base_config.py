@@ -1,6 +1,7 @@
 from typing import Optional
 from dataclasses import dataclass
 from omegaconf import MISSING
+from typing import Tuple
 
 @dataclass
 class ModelConfig:
@@ -34,6 +35,7 @@ class DefaultConfig:
     weight_decay: float = 1e-6  # 1e-3 originally.
     lr_step_size: int = 20
     LR_GAMMA: float = 0.5
+    patch_size: Tuple[int] = (1024, 1024)
     SOLVER: SolverConfig = MISSING
     network: ModelConfig = MISSING
 
