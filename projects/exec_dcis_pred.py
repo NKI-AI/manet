@@ -438,7 +438,10 @@ def main(args):
             csv_str = f'{filename[0]};{output_val};{gtr}'
             output_csv.append(csv_str)
 
-        write_list(exp_path / 'validation_results.csv', output_csv)
+        if not args.fold:
+            write_list(exp_path / 'validation_results.csv', output_csv)
+        else:
+            write_list(exp_path / f'validation_results_{args.fold}.csv', output_csv)
 
 if __name__ == '__main__':
     args = Args().parse_args()
