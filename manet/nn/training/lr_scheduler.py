@@ -174,8 +174,8 @@ class WarmRestartLR(LRScheduler):
 
 def build_optim(params, cfg):
     _optim = {'Adam': torch.optim.Adam, 'FusedAdam': None,
-              'RMSprop': torch.optim.RMSprop, 'SGD': torch.optim.SGD}[cfg.OPTIMIZER]
-    optimizer = _optim(params, cfg.STARTER_LR, weight_decay=cfg.WEIGHT_DECAY)
+              'RMSprop': torch.optim.RMSprop, 'SGD': torch.optim.SGD}[cfg.optimizer]
+    optimizer = _optim(params, cfg.learning_rate, weight_decay=cfg.weight_decay)
     return optimizer
 
 '''

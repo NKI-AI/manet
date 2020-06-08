@@ -1,0 +1,16 @@
+DEBUG: true
+MULTIGPU: 0
+APEX: -1
+num_epochs: 600
+batch_size: 1
+learning_rate: 0.00025
+lr_step_size: 150
+network:
+ use_classifier: true
+ loss_name: topk
+ classifier_gradient_multiplier: 0.15
+ loss_top_k: 1.
+ loss_gamma: 1.
+optimizer: 'Adam'
+weight_decay: 0.0001
+HARD_MINING_FREQ: 1

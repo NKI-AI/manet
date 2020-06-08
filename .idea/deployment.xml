@@ -12,7 +12,7 @@
       <paths name="rt-socrates">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/jonas_code" local="$PROJECT_DIR$" web="/" />
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

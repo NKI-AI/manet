@@ -12,8 +12,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from manet.nn.unet.unet_fastmri_facebook import ConvBlock
-from manet.nn.layers import GradMultiplication
-
+from manet.nn.layers import grad_multiplier
 
 
 class UnetModel2dClassifier(nn.Module):
@@ -130,8 +129,7 @@ class UnetModel2dClassifier(nn.Module):
 
 
 class Classifier(nn.Module):
-    # TODO: solve legacy autograd warning
-    def __init__(self, ch,  in_channels, num_domains=1, dropout_prob=0.1, grad_scale=0.5):
+    def __init__(self, ch, in_channels, num_domains=1, dropout_prob=0.1, grad_scale=0.5):
         super().__init__()
 
         self.extra_conv = nn.Conv2d(ch, in_channels, kernel_size=3, padding=1)
@@ -141,7 +139,7 @@ class Classifier(nn.Module):
 
     def forward(self, x):
         x = self.extra_conv(x)
-        x = self.conv_block(GradMultiplication(self.grad_scale)(x))
+        x = self.conv_block(grad_multiplier(x, self.grad_scale))
         x = F.max_pool2d(x, kernel_size=x.size()[2:])
         x = self.out_conv(x)[..., 0, 0]
 

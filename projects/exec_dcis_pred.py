@@ -36,14 +36,13 @@ from manet.sys.logging import setup
 from manet.sys import multi_gpu
 from manet.utils import ensure_list
 from fexp.plotting import plot_2d
+from fexp.utils.io import write_list
 from tools.optimization import parameters
 
 from operator import mul
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score, f1_score
 import functools
 import torch.nn.functional as F
-
-from fexp.utils.io import read_list, read_json
 
 logger = logging.getLogger(__name__)
 torch.backends.cudnn.benchmark = True
@@ -87,7 +86,8 @@ def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, w
     avg_dice = 0.
     start_epoch = time.perf_counter()
     global_step = epoch * len(data_loader)
-    loss_fn = build_losses(use_classifier)
+    loss_fn = build_losses(
+        use_classifier, loss_name=cfg.network.loss_name, top_k=cfg.network.loss_top_k, gamma=cfg.network.loss_gamma)
     dice_fn = HardDice(cls=1, binary_cls=True)
     optimizer.zero_grad()
 
@@ -169,7 +169,7 @@ def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, w
             for loss_idx, loss in enumerate(losses):
                 loss_str += f'Loss_{loss_idx} = {loss.item():.4f} '
             logger.info(
-                f'Ep = [{epoch + 1:3d}/{cfg.N_EPOCHS:3d}] '
+                f'Ep = [{epoch + 1:3d}/{cfg.num_epochs:3d}] '
                 f'It = [{iter_idx + 1:4d}/{len(data_loader):4d}] '
                 f'{loss_str}'
                 f'Dice = {train_dice.item():.3f} Avg DICE = {avg_dice:.3f} '
@@ -181,14 +181,15 @@ def train_epoch(cfg, args, epoch, model, data_loader, optimizer, lr_scheduler, w
     return avg_loss, time.perf_counter() - start_epoch
 
 
-def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_losses=False, use_classifier=False):
+def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, use_classifier=False):
     logger.info(f'Evaluation for epoch {epoch + 1}')
     model.eval()
 
     losses = []
     dices = []
     start = time.perf_counter()
-    loss_fn = build_losses(use_classifier)
+    loss_fn = build_losses(
+        use_classifier, loss_name=cfg.network.loss_name, top_k=cfg.network.loss_top_k, gamma=cfg.network.loss_gamma)
     dice_fn = HardDice(cls=1, binary_cls=True)
 
     aggregate_outputs = [False]
@@ -197,6 +198,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
 
     stored_outputs = []
     stored_groundtruths = []
+    stored_filenames = []
 
     with torch.no_grad():
         log_images = []
@@ -205,6 +207,7 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
         for iter_idx, batch in enumerate(data_loader):
             images = batch['image'].to(args.device)
             masks = batch['mask'].to(args.device)
+            filename = batch['image_fn']
 
             ground_truth = [masks]
             if use_classifier:
@@ -220,67 +223,69 @@ def evaluate(cfg, args, epoch, model, data_loader, writer, exp_path, return_loss
             stored_groundtruths.append(
                 [curr_gtr if aggregate else None for
                  curr_gtr, aggregate in zip(ground_truth, aggregate_outputs)])
+            stored_filenames.append(filename)
 
+            if writer:
+                if iter_idx < 2*2:
+                    log_images.append(images)
+                    log_masks.append(masks)
+                    log_output.append(output_softmax)
 
-            if iter_idx < 2*2:
-                print(images.shape, 'shape')
-                log_images.append(images)
-                log_masks.append(masks)
-                log_output.append(output_softmax)
-
-            if iter_idx == 2*2:
-                log_images_to_tensorboard(writer, epoch, log_images, log_masks, log_output, overlay_threshold=0.4)
-                del log_images
-                del log_masks
-                del log_output
+                if iter_idx == 2*2:
+                    log_images_to_tensorboard(writer, epoch, log_images, log_masks, log_output, overlay_threshold=0.5)
+                    del log_images
+                    del log_masks
+                    del log_output
 
             batch_losses = torch.tensor([loss_fn[idx](output[idx], ground_truth[idx]) for idx in range(len(output))])
             losses.append(batch_losses.sum().item())
 
-            #losses.append(sum(batch_losses))
-
-            batch_dice = dice_fn((output_softmax[0])[:, 1, ...], masks)
+            batch_dice = dice_fn(output_softmax[0][:, 1, ...], masks)
             dices.append(batch_dice.item())
             del output
 
-    metric_dict = {'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
-                   'DevDice': torch.tensor(np.mean(dices)).to(args.device)}
+    metric_dict = {
+       'DevLoss': torch.tensor(np.mean(losses)).to(args.device),
+       'DevDice': torch.tensor(np.mean(dices)).to(args.device)
+    }
 
     # Compute metrics for stored output:
+    output_result = []
     if use_classifier:
         grab_idx = 1
         outputs = torch.stack([_[grab_idx][:,1] for _ in stored_outputs]).cpu().numpy()
         gtrs = torch.stack([_[grab_idx] for _ in stored_groundtruths]).cpu().numpy()
+        output_result = (stored_filenames, outputs, gtrs)
         auc = roc_auc_score(gtrs, outputs)
-        logger.info(metric_dict, auc)
-        outputs_pred = (outputs > 0.5)
-        balanced_accuracy = balanced_accuracy_score(gtrs, outputs_pred, sample_weight=None, adjusted=False)
-        f1_score_val = f1_score(gtrs, outputs_pred)
+        # balanced_accuracy = balanced_accuracy_score(gtrs, outputs, sample_weight=None, adjusted=False)
+        #f1_score_val = f1_score(gtrs, outputs)
+        logger.info(metric_dict)
+        logger.info(auc)
         metric_dict['DevAUC'] = torch.tensor(auc).to(args.device)
-        metric_dict['DevBalancedAcc'] = torch.tensor(balanced_accuracy).to(args.device)
-        metric_dict['DevF1Score'] = torch.tensor(f1_score_val).to(args.device)
+        #metric_dict['DevBalancedAcc'] = torch.tensor(balanced_accuracy).to(args.device)
+        #metric_dict['DevF1Score'] = torch.tensor(f1_score_val).to(args.device)
 
 
     if cfg.MULTIGPU == 2:
         torch.cuda.synchronize()
         reduce_tensor_dict(metric_dict)
-    if args.local_rank == 0:
+    if args.local_rank == 0 and writer:
         for key in metric_dict:
-            writer.add_scalar(key, metric_dict[key].item(), epoch+1)
+            writer.add_scalar(key, metric_dict[key].item(), epoch + 1)
 
     metric_string = f''
     for k, v in metric_dict.items():
-        metric_string += f'{k} = {v:.4g}'
+        metric_string += f'{k} = {v:.4g} '
 
     logger.info(
-        f'Epoch = [{epoch + 1:4d}/{cfg.N_EPOCHS:4d}] '
+        f'Epoch = [{epoch + 1:4d}/{cfg.num_epochs:4d}] '
         f'{metric_string} '
         f'DevTime = {time.perf_counter() - start:.4f}s'
     )
 
     torch.cuda.empty_cache()
 
-    return metric_dict
+    return metric_dict, output_result
 
 
 def build_dataloader(batch_size, training_set, training_sampler, validation_set=None, validation_sampler=None):
@@ -307,11 +312,11 @@ def build_dataloader(batch_size, training_set, training_sampler, validation_set=
 def main(args):
     args.name = args.name if args.name is not None else os.path.basename(args.cfg)[:-5]
     base_cfg = OmegaConf.structured(DefaultConfig)
-    base_cfg = OmegaConf.merge(base_cfg, {'NETWORK': UnetConfig(), 'SOLVER': SolverConfig()})
-    params = parameters()
+    base_cfg = OmegaConf.merge(base_cfg, {'network': UnetConfig(), 'SOLVER': SolverConfig()})
+    # params = parameters()
 
-    #cfg = OmegaConf.merge(base_cfg, OmegaConf.load(args.cfg))
-    cfg = OmegaConf.merge(params, OmegaConf.load(args.cfg))
+    cfg = OmegaConf.merge(base_cfg, OmegaConf.load(args.cfg))
+    #cfg = OmegaConf.merge(params, OmegaConf.load(args.cfg))
 
     print(f'Run name {args.name}')
     print(f'Local rank {args.local_rank}')
@@ -346,8 +351,10 @@ def main(args):
         multi_gpu.synchronize()
 
     logger.info('Building model.')
-    model = build_model(use_classifier=cfg.NETWORK.USE_CLASSIFIER,
-                        classifier_grad_scale=cfg.NETWORK.CLASSIFIER_GRADIENT_MULT).to(args.device)
+    model = build_model(
+        use_classifier=cfg.network.use_classifier, num_base_filters=cfg.network.num_base_filters,
+        depth=cfg.network.depth, output_shape=cfg.patch_size,
+        classifier_grad_scale=cfg.network.classifier_gradient_multiplier).to(args.device)
     logger.info(model)
     n_params = sum(p.numel() for p in model.parameters())
     logger.debug(model)
@@ -375,10 +382,10 @@ def main(args):
     training_sampler, validation_sampler = build_samplers(
         training_set, validation_set, use_weights=False, is_distributed=is_distributed)
     training_loader, validation_loader = build_dataloader(
-        cfg.BATCH_SIZE, training_set, training_sampler, validation_set, validation_sampler)
+        cfg.batch_size, training_set, training_sampler, validation_set, validation_sampler)
 
     solver_steps = [_ * len(training_loader) for _ in
-                    range(cfg.LR_STEP_SIZE, cfg.N_EPOCHS, cfg.LR_STEP_SIZE)]
+                    range(cfg.lr_step_size, cfg.num_epochs, cfg.lr_step_size)]
     lr_scheduler = WarmupMultiStepLR(optimizer, solver_steps, cfg.LR_GAMMA, warmup_factor=1 / 10.,
                                      warmup_iters=int(0.5 * len(training_loader)), warmup_method='linear')
 
@@ -403,15 +410,15 @@ def main(args):
 
     # Train model if necessary
     if args.train:
-        for epoch in range(start_epoch, cfg.N_EPOCHS):
+        for epoch in range(start_epoch, cfg.num_epochs):
             if cfg.MULTIGPU == 2:
                 training_sampler.set_epoch(epoch)
 
             train_loss, train_time = train_epoch(cfg, args, epoch, model, training_loader, optimizer, lr_scheduler, writer,
-                                                 use_classifier=cfg.NETWORK.USE_CLASSIFIER)
+                                                 use_classifier=cfg.network.use_classifier)
             logger.info(f'Evaluation for epoch {epoch + 1}')
             validate_metrics = evaluate(
-                cfg, args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
+                cfg, args, epoch, model, validation_loader, writer, exp_path, use_classifier=cfg.network.use_classifier)
 
             if args.local_rank == 0:
                 save_model(exp_path, epoch, model, optimizer, lr_scheduler)
@@ -421,11 +428,12 @@ def main(args):
             #     logger.info('Updating samplers for hard mining.')
             #     train_loader, train_sampler = update_train_sampler(args, epoch, model, cfg, train_set, writer, exp_path)
 
+    writer.close()
     # Test model if necessary
     if args.test:
         logger.info('Validating....')
         validate_metrics, output = evaluate(
-            cfg, args, epoch, model, validation_loader, None, exp_path, use_classifier=cfg.NETWORK.USE_CLASSIFIER)
+            cfg, args, epoch, model, validation_loader, None, exp_path, use_classifier=cfg.network.use_classifier)
 
         filenames, outputs, gtrs = output
         output_csv = ['filename;output_probability;gtr']
@@ -433,7 +441,10 @@ def main(args):
             csv_str = f'{filename[0]};{output_val};{gtr}'
             output_csv.append(csv_str)
 
-        write_list(exp_path / 'validation_results.csv', output_csv)
+        if not args.fold:
+            write_list(exp_path / 'validation_results.csv', output_csv)
+        else:
+            write_list(exp_path / f'validation_results_{args.fold}.csv', output_csv)
 
 if __name__ == '__main__':
     args = Args().parse_args()
