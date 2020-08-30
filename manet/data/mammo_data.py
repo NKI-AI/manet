@@ -110,7 +110,8 @@ def build_datasets(data_source, fold=None):
     # Assume the description file, a training set and a validation set are linked in the main directory.
     if fold is None:
         train_list = read_list(data_source / 'training_set.txt')
-        validation_list = read_list(data_source / 'validation_set.txt')
+        #validation_list = read_list(data_source / 'validation_set.txt')
+        validation_list = read_list(data_source / 'testing_set.txt')
     else:
         logger.info(f'Using lists for fold {fold}')
         train_list = read_list(data_source / f'fold_{fold}' / 'training_set.txt')

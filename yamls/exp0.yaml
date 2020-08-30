@@ -2,11 +2,11 @@
 DEBUG: true
 MULTIGPU: 0
 APEX: -1
-num_epochs: 600
+num_epochs: 550
 batch_size: 1
 learning_rate: 0.00025
 lr_step_size: 150
-patch_size: (1024, 1024)
+# patch_size: (1024, 1024)
 network:
  use_classifier: true
  classifier_gradient_multiplier: 0.15
