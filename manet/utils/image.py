@@ -38,6 +38,11 @@ class MammogramImage(Image):
 
         self.raw_image = data
         self.header = header
+        
+        # If VOILutFunction is not defined for GE, it implies that the voi_lut_function is actually SIGMOID.
+        if voi_lut_function == '':
+            if self.header['dicom_tags'][DICOM_MANUFACTURER].lower() == "ge medical systems":
+                voi_lut_function = "SIGMOID"
 
         self.voi_lut_function = voi_lut_function
         if self.voi_lut_function not in ['LINEAR', 'LINEAR_EXACT', 'SIGMOID']:
@@ -88,7 +93,7 @@ class MammogramImage(Image):
 
         if explanation:
             self.dicom_center_width_explanation = [_.strip() for _ in explanation.split('\\')]
-
+            
         if self.voi_lut_function == 'SIGMOID':
             # In this case, window and center always need to be set.
             if not (len(self.dicom_window_center) == 1 and len(self.dicom_window_width) == 1):
