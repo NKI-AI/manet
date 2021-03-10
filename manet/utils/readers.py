@@ -71,7 +71,7 @@ def read_mammogram(filename):
     del metadata['origin']
 
     # TODO: Move to MammogramImage
-    voi_lut_function = dicom_tags[DICOM_VOI_LUT_FUNCTION] if dicom_tags[DICOM_VOI_LUT_FUNCTION] else 'LINEAR'
+    voi_lut_function = dicom_tags[DICOM_VOI_LUT_FUNCTION] if dicom_tags[DICOM_VOI_LUT_FUNCTION] else ''
 
     return MammogramImage(image, filename, metadata, voi_lut_function=voi_lut_function,
                           view=dicom_tags[DICOM_VIEW_POSITION], laterality=laterality)
